@@ -1,21 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">ClipboardMerger</string>
-    <string name="btn_select_all">Select All</string>
-    <string name="btn_deselect_all">Deselect All</string>
-    <string name="btn_merge">Merge Selected</string>
-    <string name="btn_clear">Clear All</string>
-    <string name="txt_empty">No clipboard content yet</string>
-    <string name="txt_merged_hint">Merged content</string>
-    <string name="toast_merged">Merged content copied to clipboard</string>
-    <string name="toast_select_item">Please select at least one item</string>
-    <string name="toast_item_deleted">Item deleted</string>
-    <string name="swipe_delete">Delete</string>
-    <string name="notification_channel_name">Clipboard Monitor</string>
-    <string name="notification_channel_desc">Monitor clipboard changes</string>
-    <string name="notification_title">ClipboardMerger</string>
-    <string name="notification_text">Monitoring clipboard…</string>
-    <string name="ime_service_desc">ClipboardMerger Input Method - enables clipboard monitoring in background via IME privileges.</string>
-    <string name="ime_status_enabled">IME: Enabled ✅</string>
-    <string name="ime_status_disabled">IME: Disabled ⚠️ (tap to enable)</string>
+    <string name="app_name">剪贴板收集器</string>
+    <string name="btn_select_all">全选</string>
+    <string name="btn_deselect_all">取消全选</string>
+    <string name="btn_merge">合并选中</string>
+    <string name="btn_clear">清空全部</string>
+    <string name="txt_empty">暂无剪贴板内容</string>
+    <string name="txt_merged_hint">已合并内容</string>
+    <string name="toast_merged">合并内容已复制到剪贴板</string>
+    <string name="toast_select_item">请至少选择一项</string>
+    <string name="toast_item_deleted">项目已删除</string>
+    <string name="swipe_delete">删除</string>
+    <string name="ime_service_desc">剪贴板收集器输入法 - 通过输入法权限在后台监听剪贴板</string>
+    <string name="ime_status_active">输入法: 已激活 ✅ — 后台监听中</string>
+    <string name="ime_status_disabled">输入法: 未激活 ⚠️ (点击切换键盘)</string>
 </resources>

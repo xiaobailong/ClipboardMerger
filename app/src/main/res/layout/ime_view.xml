@@ -3,39 +3,97 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="#FF1B5E20"
-    android:gravity="center_vertical"
-    android:orientation="horizontal"
-    android:padding="8dp">
+    android:orientation="vertical"
+    android:padding="0dp">
 
-    <TextView
-        android:layout_width="0dp"
+    <!-- 顶部状态栏 + 按钮 -->
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_weight="1"
-        android:text="ClipboardMerger monitoring..."
-        android:textColor="#FFFFFF"
-        android:textSize="13sp" />
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="6dp"
+        android:paddingVertical="3dp">
 
+        <TextView
+            android:id="@+id/tvImeStatus"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="📋 剪贴板监听"
+            android:textColor="#FFFFFF"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnPasteLast"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="#FF388E3C"
+            android:minHeight="0dp"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="2dp"
+            android:text="粘贴"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp" />
+
+        <Button
+            android:id="@+id/btnPasteAll"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="3dp"
+            android:background="#FFFF9800"
+            android:minHeight="0dp"
+            android:paddingHorizontal="6dp"
+            android:paddingVertical="2dp"
+            android:text="全部粘贴"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnSwitchBack"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="3dp"
+            android:background="#FF2E7D32"
+            android:minHeight="0dp"
+            android:paddingHorizontal="6dp"
+            android:paddingVertical="2dp"
+            android:text="切换"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp" />
+
+    </LinearLayout>
+
+    <!-- 文本输入区域 -->
+    <EditText
+        android:id="@+id/etInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#FFFFFFFF"
+        android:gravity="top|start"
+        android:hint="在此输入，然后点击发送 ▼"
+        android:imeOptions="actionSend"
+        android:inputType="textMultiLine"
+        android:maxLines="4"
+        android:minHeight="60dp"
+        android:minLines="2"
+        android:padding="6dp"
+        android:textColor="#000000"
+        android:textColorHint="#AAAAAA"
+        android:textCursorDrawable="@null"
+        android:textSize="14sp" />
+
+    <!-- 发送按钮 -->
     <Button
-        android:id="@+id/btnOpenApp"
-        android:layout_width="wrap_content"
+        android:id="@+id/btnSend"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="#FF4CAF50"
-        android:minHeight="0dp"
-        android:padding="4dp"
-        android:text="Open"
+        android:text="▼ 发送到应用 ▼"
         android:textColor="#FFFFFF"
-        android:textSize="12sp" />
-
-    <Button
-        android:id="@+id/btnSwitchBack"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="4dp"
-        android:background="#FF388E3C"
-        android:minHeight="0dp"
-        android:padding="4dp"
-        android:text="Switch IME"
-        android:textColor="#FFFFFF"
-        android:textSize="12sp" />
+        android:textSize="13sp"
+        android:textStyle="bold" />
 
 </LinearLayout>

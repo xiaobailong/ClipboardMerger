@@ -1,14 +1,10 @@
 package com.example.clipboardmerger
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.IBinder
-import androidx.core.app.NotificationCompat
 
 class ClipboardService : Service() {
 
@@ -52,10 +48,6 @@ class ClipboardService : Service() {
         super.onCreate()
         Logger.init(this)
         Logger.d("========== ClipboardService.onCreate ==========")
-        createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification())
-        Logger.d("ClipboardService.onCreate: foreground started with notification id=$NOTIFICATION_ID")
-
         clipboardManager = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboardManager?.addPrimaryClipChangedListener(clipboardListener)
         Logger.d("ClipboardService.onCreate: clipboard listener registered")
@@ -77,37 +69,7 @@ class ClipboardService : Service() {
         return null
     }
 
-    private fun createNotificationChannel() {
-        Logger.d("ClipboardService.createNotificationChannel")
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            getString(R.string.notification_channel_name),
-            NotificationManager.IMPORTANCE_LOW
-        ).apply {
-            description = getString(R.string.notification_channel_desc)
-        }
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(channel)
-        Logger.d("ClipboardService.createNotificationChannel: done")
-    }
-
-    private fun buildNotification() = NotificationCompat.Builder(this, CHANNEL_ID)
-        .setContentTitle(getString(R.string.notification_title))
-        .setContentText(getString(R.string.notification_text))
-        .setSmallIcon(android.R.drawable.ic_menu_edit)
-        .setContentIntent(
-            PendingIntent.getActivity(
-                this, 0,
-                Intent(this, MainActivity::class.java),
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-        )
-        .setOngoing(true)
-        .build()
-
     companion object {
-        const val CHANNEL_ID = "clipboard_monitor"
-        const val NOTIFICATION_ID = 1
         const val ACTION_CLIPBOARD_UPDATED = "com.example.clipboardmerger.CLIPBOARD_UPDATED"
     }
 }

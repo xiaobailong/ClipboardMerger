@@ -1,13 +1,11 @@
 package com.example.clipboardmerger
 
-import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.pm.PackageManager
 import android.graphics.Canvas
 import android.os.Build
 import android.os.Bundle
@@ -16,9 +14,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -75,17 +71,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private val notificationPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        Logger.d("Notification permission result: granted=$granted")
-        if (granted) {
-            startClipboardService()
-        } else {
-            Logger.w("Notification permission denied")
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Logger.init(this)
@@ -112,7 +97,7 @@ class MainActivity : AppCompatActivity() {
         registerClipboardListener()
         registerClipboardUpdateReceiver()
         setupIMEStatus()
-        requestNotificationPermission()
+        startClipboardService()
 
         viewModel.reloadFromRepository()
         readCurrentClipboard()
@@ -359,36 +344,11 @@ class MainActivity : AppCompatActivity() {
         Logger.d("registerClipboardUpdateReceiver: registered")
     }
 
-    private fun requestNotificationPermission() {
-        Logger.d("requestNotificationPermission: SDK_INT=${Build.VERSION.SDK_INT}")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val hasPermission = ContextCompat.checkSelfPermission(
-                this, Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
-            Logger.d("requestNotificationPermission: hasPermission=$hasPermission")
-            if (!hasPermission) {
-                Logger.d("requestNotificationPermission: launching permission request")
-                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            } else {
-                Logger.d("requestNotificationPermission: already granted, starting service")
-                startClipboardService()
-            }
-        } else {
-            Logger.d("requestNotificationPermission: SDK < TIRAMISU, starting service directly")
-            startClipboardService()
-        }
-    }
-
     private fun startClipboardService() {
         Logger.d("startClipboardService: start")
         val intent = Intent(this, ClipboardService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent)
-            Logger.d("startClipboardService: started as foreground service")
-        } else {
-            startService(intent)
-            Logger.d("startClipboardService: started as regular service")
-        }
+        startService(intent)
+        Logger.d("startClipboardService: started")
     }
 
     private fun getVersionName(): String {
@@ -402,10 +362,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupIMEStatus() {
-        val enabled = isInputMethodEnabled()
-        Logger.d("setupIMEStatus: enabled=$enabled")
-        if (enabled) {
-            binding.tvAccessibilityStatus.text = getString(R.string.ime_status_enabled)
+        val isDefault = isInputMethodDefault()
+        Logger.d("setupIMEStatus: isDefault=$isDefault")
+        if (isDefault) {
+            binding.tvAccessibilityStatus.text = getString(R.string.ime_status_active)
             binding.tvAccessibilityStatus.setBackgroundColor(0xFFE8F5E9.toInt())
             binding.tvAccessibilityStatus.setTextColor(0xFF2E7D32.toInt())
         } else {
@@ -415,23 +375,17 @@ class MainActivity : AppCompatActivity() {
         }
         binding.tvAccessibilityStatus.visibility = android.view.View.VISIBLE
         binding.tvAccessibilityStatus.setOnClickListener {
-            Logger.d("IME status clicked, opening input method settings")
-            val intent = Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)
-            startActivity(intent)
-            Toast.makeText(this, "Find \"ClipboardMerger\" and enable it as an input method", Toast.LENGTH_LONG).show()
+            Logger.d("IME status clicked, opening input method picker")
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.showInputMethodPicker()
+            Toast.makeText(this, "Select \"ClipboardMerger\" as your keyboard to enable background clipboard monitoring", Toast.LENGTH_LONG).show()
         }
     }
 
-    private fun isInputMethodEnabled(): Boolean {
-        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-        val enabledIMEs = imm.enabledInputMethodList
-        for (imi in enabledIMEs) {
-            if (imi.packageName == packageName) {
-                Logger.d("isInputMethodEnabled: found IME component: ${imi.componentName}")
-                return true
-            }
-        }
-        Logger.d("isInputMethodEnabled: IME not found in enabled list (checked ${enabledIMEs.size} IMEs)")
-        return false
+    private fun isInputMethodDefault(): Boolean {
+        val defaultIme = Settings.Secure.getString(contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
+        val result = defaultIme != null && defaultIme.contains(packageName)
+        Logger.d("isInputMethodDefault: package=$packageName, defaultIme=$defaultIme, result=$result")
+        return result
     }
 }
