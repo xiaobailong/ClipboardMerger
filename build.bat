@@ -57,6 +57,8 @@ echo ============================================
 echo.
 call "D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" clean --no-daemon --console=plain
 rmdir /s /q ".gradle" 2>nul
+if exist "*.apk" del /q "*.apk" 2>nul
+if exist "*.aab" del /q "*.aab" 2>nul
 echo.
 echo [完成] 清理完成。
 pause
@@ -101,6 +103,7 @@ if %BUILD_EXIT% neq 0 (
 echo ============================================
 echo  构建成功！
 echo ============================================
+if exist "*.apk" del /q "*.apk" 2>nul
 for /f "delims=" %%f in ('dir /s /b build\outputs\apk\debug\*.apk 2^>nul') do (
     copy /y "%%f" "." > nul
     echo  APK: %%~nxf  (%%~zf bytes)
