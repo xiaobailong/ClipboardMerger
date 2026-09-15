@@ -11,6 +11,9 @@ import android.content.pm.PackageManager
 import android.graphics.Canvas
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -28,6 +31,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var adapter: ClipboardAdapter
     private var clipboardManager: ClipboardManager? = null
     private var selfUpdating = false
+    private val handler = Handler(Looper.getMainLooper())
+    private var pendingClipboardRead: Runnable? = null
 
     private val clipboardUpdateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -105,6 +110,7 @@ class MainActivity : AppCompatActivity() {
         observeViewModel()
         registerClipboardListener()
         registerClipboardUpdateReceiver()
+        setupAccessibilityStatus()
         requestNotificationPermission()
 
         viewModel.reloadFromRepository()
@@ -112,21 +118,30 @@ class MainActivity : AppCompatActivity() {
         Logger.d("========== onCreate finished ==========")
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        Logger.d("========== onNewIntent ==========")
+        scheduleClipboardRead()
+    }
+
     override fun onResume() {
         super.onResume()
         Logger.d("========== onResume ==========")
         viewModel.reloadFromRepository()
-        readCurrentClipboard()
+        setupAccessibilityStatus()
+        scheduleClipboardRead()
         Logger.d("========== onResume finished ==========")
     }
 
     override fun onPause() {
         super.onPause()
         Logger.d("========== onPause ==========")
+        cancelScheduledClipboardRead()
     }
 
     override fun onDestroy() {
         Logger.d("========== onDestroy ==========")
+        cancelScheduledClipboardRead()
         clipboardManager?.removePrimaryClipChangedListener(clipboardListener)
         try {
             unregisterReceiver(clipboardUpdateReceiver)
@@ -172,6 +187,26 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun scheduleClipboardRead() {
+        cancelScheduledClipboardRead()
+        val runnable = Runnable {
+            Logger.d("[SCHEDULED] Running delayed clipboard read")
+            readCurrentClipboard()
+            pendingClipboardRead = null
+        }
+        pendingClipboardRead = runnable
+        handler.postDelayed(runnable, 500)
+        Logger.d("scheduleClipboardRead: posted with 500ms delay")
+    }
+
+    private fun cancelScheduledClipboardRead() {
+        pendingClipboardRead?.let {
+            handler.removeCallbacks(it)
+            Logger.d("cancelScheduledClipboardRead: cancelled pending read")
+        }
+        pendingClipboardRead = null
+    }
+
     private fun setupRecyclerView() {
         Logger.d("setupRecyclerView")
         adapter = ClipboardAdapter(
@@ -187,6 +222,10 @@ class MainActivity : AppCompatActivity() {
         val itemTouchHelper = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
             0, ItemTouchHelper.LEFT
         ) {
+            override fun getSwipeThreshold(viewHolder: RecyclerView.ViewHolder): Float = 0.25f
+
+            override fun getSwipeEscapeVelocity(defaultValue: Float): Float = defaultValue * 0.5f
+
             override fun onMove(
                 recyclerView: RecyclerView,
                 viewHolder: RecyclerView.ViewHolder,
@@ -359,5 +398,40 @@ class MainActivity : AppCompatActivity() {
             Logger.w("getVersionName failed: ${e.message}")
             "unknown"
         }
+    }
+
+    private fun setupAccessibilityStatus() {
+        val enabled = isAccessibilityServiceEnabled()
+        Logger.d("setupAccessibilityStatus: enabled=$enabled")
+        if (enabled) {
+            binding.tvAccessibilityStatus.text = getString(R.string.accessibility_status_enabled)
+            binding.tvAccessibilityStatus.setBackgroundColor(0xFFE8F5E9.toInt())
+            binding.tvAccessibilityStatus.setTextColor(0xFF2E7D32.toInt())
+        } else {
+            binding.tvAccessibilityStatus.text = getString(R.string.accessibility_status_disabled)
+            binding.tvAccessibilityStatus.setBackgroundColor(0xFFFFF3E0.toInt())
+            binding.tvAccessibilityStatus.setTextColor(0xFFE65100.toInt())
+        }
+        binding.tvAccessibilityStatus.visibility = android.view.View.VISIBLE
+        binding.tvAccessibilityStatus.setOnClickListener {
+            Logger.d("Accessibility status clicked, opening settings")
+            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            startActivity(intent)
+            Toast.makeText(this, "Find \"ClipboardMerger\" and enable it", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        val serviceName = "$packageName/.ClipboardAccessibilityService"
+        val enabledServices = try {
+            Settings.Secure.getString(
+                contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            ) ?: ""
+        } catch (e: Exception) {
+            Logger.w("isAccessibilityServiceEnabled: read settings failed: ${e.message}")
+            ""
+        }
+        return enabledServices.contains(serviceName) || enabledServices.contains(packageName + "/" + packageName + ".ClipboardAccessibilityService")
     }
 }

@@ -60,6 +60,19 @@
             android:textSize="13sp" />
     </LinearLayout>
 
+    <!-- 无障碍服务状态提示 -->
+    <TextView
+        android:id="@+id/tvAccessibilityStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#FFF3E0"
+        android:gravity="center"
+        android:padding="6dp"
+        android:text="@string/accessibility_status_disabled"
+        android:textColor="#E65100"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
     <View
         android:layout_width="match_parent"
         android:layout_height="0.5dp"
