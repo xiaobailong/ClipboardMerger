@@ -12,13 +12,8 @@ class ClipboardViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun reloadFromRepository() {
         val saved = ClipboardRepository.loadItems(getApplication())
-        val current = items.value ?: mutableListOf()
-        if (saved.size > current.size) {
-            Logger.d("ViewModel.reloadFromRepository: repository has ${saved.size} items, current UI has ${current.size}, reloading")
-            items.value = saved
-        } else {
-            Logger.d("ViewModel.reloadFromRepository: no new items from repository (saved=${saved.size}, current=${current.size})")
-        }
+        Logger.d("ViewModel.reloadFromRepository: loading from repository, got ${saved.size} items")
+        items.value = saved
     }
 
     fun addItem(content: String) {

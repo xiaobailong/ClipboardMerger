@@ -72,10 +72,16 @@ class ClipboardInputMethodService : InputMethodService() {
         val tvStatus = view.findViewById<TextView>(R.id.tvImeStatus)
 
         btnClearClipboard.setOnClickListener {
-            Logger.d("IMEService: clear system clipboard")
+            Logger.d("IMEService: clear system clipboard and all collected items")
             val clip = ClipData.newPlainText("", "")
             clipboardManager?.setPrimaryClip(clip)
+            ClipboardRepository.clearAll(applicationContext)
+            lastClipLabel = ""
             tvStatus.text = "剪切板已清空"
+            val intent = Intent(ACTION_CLIPBOARD_UPDATED).apply {
+                setPackage(packageName)
+            }
+            sendBroadcast(intent)
         }
 
         btnPasteLast.setOnClickListener {

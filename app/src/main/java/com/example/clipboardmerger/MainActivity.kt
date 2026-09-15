@@ -272,7 +272,7 @@ class MainActivity : AppCompatActivity() {
         )
         binding.swipeRefresh.setOnRefreshListener {
             Logger.d("[SWIPE] Pull-to-refresh triggered")
-            readCurrentClipboard()
+            viewModel.reloadFromRepository()
             binding.swipeRefresh.isRefreshing = false
             Logger.d("[SWIPE] Refresh complete, items=${viewModel.items.value?.size ?: 0}")
         }
