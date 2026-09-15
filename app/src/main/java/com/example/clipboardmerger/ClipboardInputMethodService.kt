@@ -1,5 +1,6 @@
 package com.example.clipboardmerger
 
+import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
@@ -8,7 +9,6 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
-import android.widget.EditText
 import android.widget.TextView
 
 class ClipboardInputMethodService : InputMethodService() {
@@ -65,20 +65,17 @@ class ClipboardInputMethodService : InputMethodService() {
         Logger.d("IMEService.onCreateInputView")
         val view = layoutInflater.inflate(R.layout.ime_view, null)
 
-        val etInput = view.findViewById<EditText>(R.id.etInput)
-        val btnSend = view.findViewById<Button>(R.id.btnSend)
+        val btnClearClipboard = view.findViewById<Button>(R.id.btnClearClipboard)
         val btnPasteLast = view.findViewById<Button>(R.id.btnPasteLast)
         val btnPasteAll = view.findViewById<Button>(R.id.btnPasteAll)
         val btnSwitchBack = view.findViewById<Button>(R.id.btnSwitchBack)
         val tvStatus = view.findViewById<TextView>(R.id.tvImeStatus)
 
-        btnSend.setOnClickListener {
-            val text = etInput.text?.toString() ?: ""
-            if (text.isNotEmpty()) {
-                Logger.d("IMEService: sending text to app, len=${text.length}")
-                currentInputConnection?.commitText(text, 1)
-                etInput.text?.clear()
-            }
+        btnClearClipboard.setOnClickListener {
+            Logger.d("IMEService: clear system clipboard")
+            val clip = ClipData.newPlainText("", "")
+            clipboardManager?.setPrimaryClip(clip)
+            tvStatus.text = "剪切板已清空"
         }
 
         btnPasteLast.setOnClickListener {

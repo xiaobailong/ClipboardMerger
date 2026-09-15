@@ -66,32 +66,13 @@
 
     </LinearLayout>
 
-    <!-- 文本输入区域 -->
-    <EditText
-        android:id="@+id/etInput"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="#FFFFFFFF"
-        android:gravity="top|start"
-        android:hint="在此输入，然后点击发送 ▼"
-        android:imeOptions="actionSend"
-        android:inputType="textMultiLine"
-        android:maxLines="4"
-        android:minHeight="60dp"
-        android:minLines="2"
-        android:padding="6dp"
-        android:textColor="#000000"
-        android:textColorHint="#AAAAAA"
-        android:textCursorDrawable="@null"
-        android:textSize="14sp" />
-
-    <!-- 发送按钮 -->
+    <!-- 清空剪切板按钮 -->
     <Button
-        android:id="@+id/btnSend"
+        android:id="@+id/btnClearClipboard"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="#FF4CAF50"
-        android:text="▼ 发送到应用 ▼"
+        android:background="#FFB00020"
+        android:text="清空系统剪切板"
         android:textColor="#FFFFFF"
         android:textSize="13sp"
         android:textStyle="bold" />
