@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ClipboardMerger</string>
+    <string name="btn_select_all">Select All</string>
+    <string name="btn_deselect_all">Deselect All</string>
+    <string name="btn_merge">Merge Selected</string>
+    <string name="btn_clear">Clear All</string>
+    <string name="txt_empty">No clipboard content yet</string>
+    <string name="txt_merged_hint">Merged content</string>
+    <string name="toast_merged">Merged content copied to clipboard</string>
+    <string name="toast_select_item">Please select at least one item</string>
+    <string name="toast_item_deleted">Item deleted</string>
+    <string name="swipe_delete">Delete</string>
+    <string name="notification_channel_name">Clipboard Monitor</string>
+    <string name="notification_channel_desc">Monitor clipboard changes</string>
+    <string name="notification_title">ClipboardMerger</string>
+    <string name="notification_text">Monitoring clipboard…</string>
+</resources>

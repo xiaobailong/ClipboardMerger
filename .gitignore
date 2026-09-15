@@ -1,0 +1,45 @@
+# Built application files
+*.apk
+*.aab
+*.ap_
+*.aab_
+
+# Android Studio / IntelliJ IDEA
+.idea/
+*.iml
+.gradle/
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.hprof
+
+# Gradle
+local.properties
+gradle/wrapper/gradle-wrapper.jar
+gradle/wrapper/gradle-wrapper.properties
+
+# Keystore files
+*.jks
+*.keystore
+*.p12
+*.key
+*.pem
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.swp
+*~
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.bak
