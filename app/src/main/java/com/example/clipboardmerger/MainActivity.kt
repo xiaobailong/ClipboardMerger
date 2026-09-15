@@ -14,6 +14,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -110,7 +111,7 @@ class MainActivity : AppCompatActivity() {
         observeViewModel()
         registerClipboardListener()
         registerClipboardUpdateReceiver()
-        setupAccessibilityStatus()
+        setupIMEStatus()
         requestNotificationPermission()
 
         viewModel.reloadFromRepository()
@@ -128,7 +129,7 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         Logger.d("========== onResume ==========")
         viewModel.reloadFromRepository()
-        setupAccessibilityStatus()
+        setupIMEStatus()
         scheduleClipboardRead()
         Logger.d("========== onResume finished ==========")
     }
@@ -400,38 +401,37 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupAccessibilityStatus() {
-        val enabled = isAccessibilityServiceEnabled()
-        Logger.d("setupAccessibilityStatus: enabled=$enabled")
+    private fun setupIMEStatus() {
+        val enabled = isInputMethodEnabled()
+        Logger.d("setupIMEStatus: enabled=$enabled")
         if (enabled) {
-            binding.tvAccessibilityStatus.text = getString(R.string.accessibility_status_enabled)
+            binding.tvAccessibilityStatus.text = getString(R.string.ime_status_enabled)
             binding.tvAccessibilityStatus.setBackgroundColor(0xFFE8F5E9.toInt())
             binding.tvAccessibilityStatus.setTextColor(0xFF2E7D32.toInt())
         } else {
-            binding.tvAccessibilityStatus.text = getString(R.string.accessibility_status_disabled)
+            binding.tvAccessibilityStatus.text = getString(R.string.ime_status_disabled)
             binding.tvAccessibilityStatus.setBackgroundColor(0xFFFFF3E0.toInt())
             binding.tvAccessibilityStatus.setTextColor(0xFFE65100.toInt())
         }
         binding.tvAccessibilityStatus.visibility = android.view.View.VISIBLE
         binding.tvAccessibilityStatus.setOnClickListener {
-            Logger.d("Accessibility status clicked, opening settings")
-            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            Logger.d("IME status clicked, opening input method settings")
+            val intent = Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)
             startActivity(intent)
-            Toast.makeText(this, "Find \"ClipboardMerger\" and enable it", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Find \"ClipboardMerger\" and enable it as an input method", Toast.LENGTH_LONG).show()
         }
     }
 
-    private fun isAccessibilityServiceEnabled(): Boolean {
-        val serviceName = "$packageName/.ClipboardAccessibilityService"
-        val enabledServices = try {
-            Settings.Secure.getString(
-                contentResolver,
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-            ) ?: ""
-        } catch (e: Exception) {
-            Logger.w("isAccessibilityServiceEnabled: read settings failed: ${e.message}")
-            ""
+    private fun isInputMethodEnabled(): Boolean {
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        val enabledIMEs = imm.enabledInputMethodList
+        for (imi in enabledIMEs) {
+            if (imi.packageName == packageName) {
+                Logger.d("isInputMethodEnabled: found IME component: ${imi.componentName}")
+                return true
+            }
         }
-        return enabledServices.contains(serviceName) || enabledServices.contains(packageName + "/" + packageName + ".ClipboardAccessibilityService")
+        Logger.d("isInputMethodEnabled: IME not found in enabled list (checked ${enabledIMEs.size} IMEs)")
+        return false
     }
 }

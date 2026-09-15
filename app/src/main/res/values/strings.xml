@@ -15,7 +15,7 @@
     <string name="notification_channel_desc">Monitor clipboard changes</string>
     <string name="notification_title">ClipboardMerger</string>
     <string name="notification_text">Monitoring clipboard…</string>
-    <string name="accessibility_service_desc">Enables ClipboardMerger to monitor clipboard changes when running in the background. Without this, clipboard changes cannot be captured while the app is not in the foreground.</string>
-    <string name="accessibility_status_enabled">Accessibility: Enabled ✅</string>
-    <string name="accessibility_status_disabled">Accessibility: Disabled ⚠️ (tap to enable)</string>
+    <string name="ime_service_desc">ClipboardMerger Input Method - enables clipboard monitoring in background via IME privileges.</string>
+    <string name="ime_status_enabled">IME: Enabled ✅</string>
+    <string name="ime_status_disabled">IME: Disabled ⚠️ (tap to enable)</string>
 </resources>
