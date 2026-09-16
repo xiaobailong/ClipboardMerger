@@ -4,9 +4,13 @@ import android.content.Context
 import android.util.Base64
 import org.json.JSONObject
 import java.net.HttpURLConnection
+import java.net.InetSocketAddress
+import java.net.Proxy
+import java.net.ProxySelector
+import java.net.URI
 import java.net.URL
 
-class GitHubHelper(context: Context) {
+class GitHubHelper(private val context: Context) {
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
@@ -34,19 +38,38 @@ class GitHubHelper(context: Context) {
         return Pair(match.groupValues[1], match.groupValues[2])
     }
 
+    /**
+     * 创建 HTTP 连接，自动检测并使用系统代理（WiFi 代理 / VPN / Clash 等都走这里）
+     */
+    private fun openConnection(url: String): HttpURLConnection {
+        val uri = URI(url)
+        val proxies = ProxySelector.getDefault().select(uri)
+        val proxy = proxies.firstOrNull { it != Proxy.NO_PROXY }
+        return if (proxy != null) {
+            Logger.d("GitHubHelper: using proxy ${proxy.address()}")
+            URL(url).openConnection(proxy) as HttpURLConnection
+        } else {
+            Logger.d("GitHubHelper: no proxy, direct connection")
+            URL(url).openConnection() as HttpURLConnection
+        }
+    }
+
     fun fetchFile(): Result<String> {
         return try {
             val (owner, repo) = getOwnerAndRepo() ?: return Result.failure(Exception("无法解析仓库地址"))
             val apiUrl = "https://api.github.com/repos/$owner/$repo/contents/${getFilePath()}"
             Logger.d("GitHubHelper.fetchFile: GET $apiUrl")
 
-            val connection = URL(apiUrl).openConnection() as HttpURLConnection
+            val connection = openConnection(apiUrl)
             connection.setRequestProperty("Authorization", "token ${getToken()}")
             connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
+            connection.setRequestProperty("User-Agent", "ClipboardMerger")
             connection.connectTimeout = 15000
             connection.readTimeout = 15000
 
+            Logger.d("GitHubHelper.fetchFile: connecting...")
             val code = connection.responseCode
+            Logger.d("GitHubHelper.fetchFile: response code=$code")
             if (code != 200) {
                 val errorBody = connection.errorStream?.bufferedReader()?.readText() ?: ""
                 return Result.failure(Exception("HTTP $code: $errorBody"))
@@ -75,11 +98,13 @@ class GitHubHelper(context: Context) {
 
             var sha: String? = null
             try {
-                val getConn = URL(apiUrl).openConnection() as HttpURLConnection
+                val getConn = openConnection(apiUrl)
                 getConn.setRequestProperty("Authorization", "token ${getToken()}")
                 getConn.setRequestProperty("Accept", "application/vnd.github.v3+json")
+                getConn.setRequestProperty("User-Agent", "ClipboardMerger")
                 getConn.connectTimeout = 15000
                 getConn.readTimeout = 15000
+                Logger.d("GitHubHelper.saveFile: connecting to get SHA...")
                 if (getConn.responseCode == 200) {
                     val getResponse = getConn.inputStream.bufferedReader().readText()
                     sha = JSONObject(getResponse).optString("sha", null)
@@ -96,7 +121,7 @@ class GitHubHelper(context: Context) {
             }
 
             Logger.d("GitHubHelper.saveFile: PUT $apiUrl")
-            val connection = URL(apiUrl).openConnection() as HttpURLConnection
+            val connection = openConnection(apiUrl)
             connection.requestMethod = "PUT"
             connection.setRequestProperty("Authorization", "token ${getToken()}")
             connection.setRequestProperty("Content-Type", "application/json")
@@ -105,9 +130,11 @@ class GitHubHelper(context: Context) {
             connection.connectTimeout = 15000
             connection.readTimeout = 15000
 
+            Logger.d("GitHubHelper.saveFile: connecting to PUT...")
             connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
 
             val code = connection.responseCode
+            Logger.d("GitHubHelper.saveFile: response code=$code")
             if (code in 200..201) {
                 val resp = connection.inputStream.bufferedReader().readText()
                 Logger.d("GitHubHelper.saveFile: success, HTTP $code")

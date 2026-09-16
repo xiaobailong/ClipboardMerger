@@ -27,8 +27,11 @@ import androidx.recyclerview.widget.RecyclerView
 import com.example.clipboardmerger.databinding.ActivityMainBinding
 import com.google.android.material.tabs.TabLayout
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
 class MainActivity : AppCompatActivity() {
 
@@ -443,7 +446,17 @@ class MainActivity : AppCompatActivity() {
             btnEdit.isEnabled = false
             btnSave.isEnabled = false
             lifecycleScope.launch(Dispatchers.IO) {
-                val result = githubHelper.fetchFile()
+                val result = try {
+                    withTimeout(20000L) {
+                        runInterruptible(Dispatchers.IO) {
+                            githubHelper.fetchFile()
+                        }
+                    }
+                } catch (e: TimeoutCancellationException) {
+                    Result.failure(Exception("请求超时（20秒），请检查网络是否可访问 GitHub"))
+                } catch (e: Exception) {
+                    Result.failure(e)
+                }
                 withContext(Dispatchers.Main) {
                     btnEdit.isEnabled = true
                     btnSave.isEnabled = true
@@ -476,7 +489,17 @@ class MainActivity : AppCompatActivity() {
             btnEdit.isEnabled = false
             btnSave.isEnabled = false
             lifecycleScope.launch(Dispatchers.IO) {
-                val result = githubHelper.saveFile(content)
+                val result = try {
+                    withTimeout(30000L) {
+                        runInterruptible(Dispatchers.IO) {
+                            githubHelper.saveFile(content)
+                        }
+                    }
+                } catch (e: TimeoutCancellationException) {
+                    Result.failure(Exception("保存超时（30秒），请检查网络是否可访问 GitHub"))
+                } catch (e: Exception) {
+                    Result.failure(e)
+                }
                 withContext(Dispatchers.Main) {
                     btnEdit.isEnabled = true
                     btnSave.isEnabled = true
