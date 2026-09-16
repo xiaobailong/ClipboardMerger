@@ -78,11 +78,15 @@ class GitHubHelper(private val context: Context) {
             val response = connection.inputStream.bufferedReader().readText()
             val json = JSONObject(response)
             val content = json.optString("content", "")
-            if (content.isEmpty()) {
-                return Result.failure(Exception("文件为空或不存在"))
+            // 文件为空是合法场景，允许返回空字符串
+            val decoded = if (content.isEmpty()) {
+                Logger.d("GitHubHelper.fetchFile: success, file is empty")
+                ""
+            } else {
+                val decodedContent = String(Base64.decode(content.replace("\n", ""), Base64.DEFAULT))
+                Logger.d("GitHubHelper.fetchFile: success, ${decodedContent.length} chars")
+                decodedContent
             }
-            val decoded = String(Base64.decode(content.replace("\n", ""), Base64.DEFAULT))
-            Logger.d("GitHubHelper.fetchFile: success, ${decoded.length} chars")
             Result.success(decoded)
         } catch (e: Exception) {
             Logger.w("GitHubHelper.fetchFile failed: ${e.message}")
