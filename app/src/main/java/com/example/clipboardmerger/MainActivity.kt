@@ -447,7 +447,7 @@ class MainActivity : AppCompatActivity() {
             btnSave.isEnabled = false
             lifecycleScope.launch(Dispatchers.IO) {
                 val result = try {
-                    withTimeout(20000L) {
+                    withTimeout(10000L) {
                         runInterruptible(Dispatchers.IO) {
                             githubHelper.fetchFile()
                         }
@@ -490,7 +490,7 @@ class MainActivity : AppCompatActivity() {
             btnSave.isEnabled = false
             lifecycleScope.launch(Dispatchers.IO) {
                 val result = try {
-                    withTimeout(30000L) {
+                    withTimeout(15000L) {
                         runInterruptible(Dispatchers.IO) {
                             githubHelper.saveFile(content)
                         }

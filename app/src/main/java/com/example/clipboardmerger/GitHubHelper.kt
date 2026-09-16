@@ -64,18 +64,20 @@ class GitHubHelper(private val context: Context) {
             connection.setRequestProperty("Authorization", "token ${getToken()}")
             connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
             connection.setRequestProperty("User-Agent", "ClipboardMerger")
-            connection.connectTimeout = 15000
-            connection.readTimeout = 15000
+            connection.connectTimeout = 8000
+            connection.readTimeout = 8000
 
             Logger.d("GitHubHelper.fetchFile: connecting...")
             val code = connection.responseCode
-            Logger.d("GitHubHelper.fetchFile: response code=$code")
+            Logger.d("GitHubHelper.fetchFile: response code=$code, contentLength=${connection.contentLength}")
             if (code != 200) {
                 val errorBody = connection.errorStream?.bufferedReader()?.readText() ?: ""
                 return Result.failure(Exception("HTTP $code: $errorBody"))
             }
 
+            Logger.d("GitHubHelper.fetchFile: reading response body...")
             val response = connection.inputStream.bufferedReader().readText()
+            Logger.d("GitHubHelper.fetchFile: body received, ${response.length} chars")
             val json = JSONObject(response)
             val content = json.optString("content", "")
             // 文件为空是合法场景，允许返回空字符串
@@ -106,8 +108,8 @@ class GitHubHelper(private val context: Context) {
                 getConn.setRequestProperty("Authorization", "token ${getToken()}")
                 getConn.setRequestProperty("Accept", "application/vnd.github.v3+json")
                 getConn.setRequestProperty("User-Agent", "ClipboardMerger")
-                getConn.connectTimeout = 15000
-                getConn.readTimeout = 15000
+                getConn.connectTimeout = 8000
+                getConn.readTimeout = 8000
                 Logger.d("GitHubHelper.saveFile: connecting to get SHA...")
                 if (getConn.responseCode == 200) {
                     val getResponse = getConn.inputStream.bufferedReader().readText()
@@ -131,9 +133,8 @@ class GitHubHelper(private val context: Context) {
             connection.setRequestProperty("Content-Type", "application/json")
             connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
             connection.doOutput = true
-            connection.connectTimeout = 15000
-            connection.readTimeout = 15000
-
+            connection.connectTimeout = 8000
+            connection.readTimeout = 8000
             Logger.d("GitHubHelper.saveFile: connecting to PUT...")
             connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
 
