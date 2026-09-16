@@ -14,4 +14,20 @@
     <string name="ime_service_desc">剪贴板收集器输入法 - 通过输入法权限在后台监听剪贴板</string>
     <string name="ime_status_active">输入法: 已激活 ✅ — 后台监听中</string>
     <string name="ime_status_disabled">输入法: 未激活 ⚠️ (点击切换键盘)</string>
+
+    <string name="tab_clipboard">剪切板</string>
+    <string name="tab_github">GitHub</string>
+    <string name="github_need_settings">请先设置GitHub仓库信息</string>
+    <string name="github_fetching">正在从GitHub拉取文件…</string>
+    <string name="github_fetch_success">文件加载成功 (%d 字符)</string>
+    <string name="github_fetch_success_toast">文件加载成功</string>
+    <string name="github_fetch_failed">加载失败: %s</string>
+    <string name="github_saving">正在保存到GitHub…</string>
+    <string name="github_save_success">保存成功</string>
+    <string name="github_save_success_toast">保存成功</string>
+    <string name="github_save_failed">保存失败: %s</string>
+    <string name="github_empty_content">内容为空，请先编辑</string>
+    <string name="github_settings_title">GitHub 仓库设置</string>
+    <string name="github_save_settings">保存</string>
+    <string name="github_settings_saved">设置已保存</string>
 </resources>

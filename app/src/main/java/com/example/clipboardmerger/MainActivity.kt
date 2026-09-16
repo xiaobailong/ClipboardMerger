@@ -1,5 +1,6 @@
 package com.example.clipboardmerger
 
+import android.app.AlertDialog
 import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -12,14 +13,22 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.view.View
 import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.clipboardmerger.databinding.ActivityMainBinding
+import com.google.android.material.tabs.TabLayout
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
 
@@ -101,6 +110,8 @@ class MainActivity : AppCompatActivity() {
 
         viewModel.reloadFromRepository()
         readCurrentClipboard()
+        setupTabs()
+        setupGitHubButtons()
         Logger.d("========== onCreate finished ==========")
     }
 
@@ -304,9 +315,9 @@ class MainActivity : AppCompatActivity() {
             Logger.d("ViewModel items changed: size=${list.size}")
             adapter.submitList(list)
             binding.tvEmpty.visibility =
-                if (list.isEmpty()) android.view.View.VISIBLE else android.view.View.GONE
+                if (list.isEmpty()) View.VISIBLE else View.GONE
             binding.recyclerView.visibility =
-                if (list.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE
+                if (list.isEmpty()) View.GONE else View.VISIBLE
         }
     }
 
@@ -373,7 +384,7 @@ class MainActivity : AppCompatActivity() {
             binding.tvAccessibilityStatus.setBackgroundColor(0xFFFFF3E0.toInt())
             binding.tvAccessibilityStatus.setTextColor(0xFFE65100.toInt())
         }
-        binding.tvAccessibilityStatus.visibility = android.view.View.VISIBLE
+        binding.tvAccessibilityStatus.visibility = View.VISIBLE
         binding.tvAccessibilityStatus.setOnClickListener {
             Logger.d("IME status clicked, opening input method picker")
             val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
@@ -387,5 +398,127 @@ class MainActivity : AppCompatActivity() {
         val result = defaultIme != null && defaultIme.contains(packageName)
         Logger.d("isInputMethodDefault: package=$packageName, defaultIme=$defaultIme, result=$result")
         return result
+    }
+
+    private fun setupTabs() {
+        Logger.d("setupTabs")
+        binding.tabLayout.addTab(binding.tabLayout.newTab().setText(R.string.tab_clipboard))
+        binding.tabLayout.addTab(binding.tabLayout.newTab().setText(R.string.tab_github))
+        binding.tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: TabLayout.Tab?) {
+                when (tab?.position) {
+                    0 -> {
+                        binding.layoutClipboard.visibility = View.VISIBLE
+                        binding.layoutGithub.visibility = View.GONE
+                    }
+                    1 -> {
+                        binding.layoutClipboard.visibility = View.GONE
+                        binding.layoutGithub.visibility = View.VISIBLE
+                    }
+                }
+            }
+            override fun onTabUnselected(tab: TabLayout.Tab?) {}
+            override fun onTabReselected(tab: TabLayout.Tab?) {}
+        })
+    }
+
+    private fun setupGitHubButtons() {
+        Logger.d("setupGitHubButtons")
+        val githubRoot = binding.layoutGithub
+        val etContent = githubRoot.findViewById<EditText>(R.id.etGithubContent)
+        val btnEdit = githubRoot.findViewById<TextView>(R.id.btnGithubEdit)
+        val btnSave = githubRoot.findViewById<TextView>(R.id.btnGithubSave)
+        val btnSettings = githubRoot.findViewById<TextView>(R.id.btnGithubSettings)
+        val tvStatus = githubRoot.findViewById<TextView>(R.id.tvGithubStatus)
+        val githubHelper = GitHubHelper(this)
+
+        btnEdit.setOnClickListener {
+            Logger.d("GitHub: edit button clicked")
+            if (!githubHelper.hasSettings()) {
+                Toast.makeText(this, R.string.github_need_settings, Toast.LENGTH_SHORT).show()
+                showGithubSettingsDialog()
+                return@setOnClickListener
+            }
+            tvStatus.text = getString(R.string.github_fetching)
+            btnEdit.isEnabled = false
+            btnSave.isEnabled = false
+            lifecycleScope.launch(Dispatchers.IO) {
+                val result = githubHelper.fetchFile()
+                withContext(Dispatchers.Main) {
+                    btnEdit.isEnabled = true
+                    btnSave.isEnabled = true
+                    result.onSuccess { content ->
+                        etContent.setText(content)
+                        etContent.isEnabled = true
+                        tvStatus.text = getString(R.string.github_fetch_success, content.length)
+                        Toast.makeText(this@MainActivity, R.string.github_fetch_success_toast, Toast.LENGTH_SHORT).show()
+                    }.onFailure { e ->
+                        tvStatus.text = getString(R.string.github_fetch_failed, e.message ?: "")
+                        Toast.makeText(this@MainActivity, getString(R.string.github_fetch_failed, e.message ?: ""), Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+
+        btnSave.setOnClickListener {
+            Logger.d("GitHub: save button clicked")
+            if (!githubHelper.hasSettings()) {
+                Toast.makeText(this, R.string.github_need_settings, Toast.LENGTH_SHORT).show()
+                showGithubSettingsDialog()
+                return@setOnClickListener
+            }
+            val content = etContent.text.toString()
+            if (content.isBlank()) {
+                Toast.makeText(this, R.string.github_empty_content, Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            tvStatus.text = getString(R.string.github_saving)
+            btnEdit.isEnabled = false
+            btnSave.isEnabled = false
+            lifecycleScope.launch(Dispatchers.IO) {
+                val result = githubHelper.saveFile(content)
+                withContext(Dispatchers.Main) {
+                    btnEdit.isEnabled = true
+                    btnSave.isEnabled = true
+                    result.onSuccess {
+                        tvStatus.text = getString(R.string.github_save_success)
+                        Toast.makeText(this@MainActivity, R.string.github_save_success_toast, Toast.LENGTH_SHORT).show()
+                    }.onFailure { e ->
+                        tvStatus.text = getString(R.string.github_save_failed, e.message ?: "")
+                        Toast.makeText(this@MainActivity, getString(R.string.github_save_failed, e.message ?: ""), Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+
+        btnSettings.setOnClickListener {
+            Logger.d("GitHub: settings button clicked")
+            showGithubSettingsDialog()
+        }
+    }
+
+    private fun showGithubSettingsDialog() {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_github_settings, null)
+        val etRepoUrl = dialogView.findViewById<EditText>(R.id.etRepoUrl)
+        val etToken = dialogView.findViewById<EditText>(R.id.etToken)
+        val etFilePath = dialogView.findViewById<EditText>(R.id.etFilePath)
+        val githubHelper = GitHubHelper(this)
+
+        etRepoUrl.setText(githubHelper.getRepoUrl())
+        etToken.setText(githubHelper.getToken())
+        etFilePath.setText(githubHelper.getFilePath())
+
+        AlertDialog.Builder(this)
+            .setTitle(R.string.github_settings_title)
+            .setView(dialogView)
+            .setPositiveButton(R.string.github_save_settings) { _, _ ->
+                val repoUrl = etRepoUrl.text.toString().trim()
+                val token = etToken.text.toString().trim()
+                val filePath = etFilePath.text.toString().trim()
+                githubHelper.saveSettings(repoUrl, token, filePath)
+                Toast.makeText(this, R.string.github_settings_saved, Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 }

@@ -1,0 +1,131 @@
+package com.example.clipboardmerger
+
+import android.content.Context
+import android.util.Base64
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+
+class GitHubHelper(context: Context) {
+
+    private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    fun getRepoUrl(): String = prefs.getString(KEY_REPO_URL, "") ?: ""
+    fun getToken(): String = prefs.getString(KEY_TOKEN, "") ?: ""
+    fun getFilePath(): String = prefs.getString(KEY_FILE_PATH, "") ?: ""
+
+    fun saveSettings(repoUrl: String, token: String, filePath: String) {
+        prefs.edit()
+            .putString(KEY_REPO_URL, repoUrl)
+            .putString(KEY_TOKEN, token)
+            .putString(KEY_FILE_PATH, filePath)
+            .apply()
+        Logger.d("GitHubHelper: settings saved")
+    }
+
+    fun hasSettings(): Boolean {
+        return getRepoUrl().isNotBlank() && getToken().isNotBlank() && getFilePath().isNotBlank()
+    }
+
+    fun getOwnerAndRepo(): Pair<String, String>? {
+        val url = getRepoUrl().trimEnd('/')
+        val regex = Regex("github\\.com[:/](.+?)/(.+?)(?:\\.git)?$")
+        val match = regex.find(url) ?: return null
+        return Pair(match.groupValues[1], match.groupValues[2])
+    }
+
+    fun fetchFile(): Result<String> {
+        return try {
+            val (owner, repo) = getOwnerAndRepo() ?: return Result.failure(Exception("无法解析仓库地址"))
+            val apiUrl = "https://api.github.com/repos/$owner/$repo/contents/${getFilePath()}"
+            Logger.d("GitHubHelper.fetchFile: GET $apiUrl")
+
+            val connection = URL(apiUrl).openConnection() as HttpURLConnection
+            connection.setRequestProperty("Authorization", "token ${getToken()}")
+            connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
+            connection.connectTimeout = 15000
+            connection.readTimeout = 15000
+
+            val code = connection.responseCode
+            if (code != 200) {
+                val errorBody = connection.errorStream?.bufferedReader()?.readText() ?: ""
+                return Result.failure(Exception("HTTP $code: $errorBody"))
+            }
+
+            val response = connection.inputStream.bufferedReader().readText()
+            val json = JSONObject(response)
+            val content = json.optString("content", "")
+            if (content.isEmpty()) {
+                return Result.failure(Exception("文件为空或不存在"))
+            }
+            val decoded = String(Base64.decode(content.replace("\n", ""), Base64.DEFAULT))
+            Logger.d("GitHubHelper.fetchFile: success, ${decoded.length} chars")
+            Result.success(decoded)
+        } catch (e: Exception) {
+            Logger.w("GitHubHelper.fetchFile failed: ${e.message}")
+            Result.failure(e)
+        }
+    }
+
+    fun saveFile(content: String): Result<String> {
+        return try {
+            val (owner, repo) = getOwnerAndRepo() ?: return Result.failure(Exception("无法解析仓库地址"))
+            val apiUrl = "https://api.github.com/repos/$owner/$repo/contents/${getFilePath()}"
+            Logger.d("GitHubHelper.saveFile: GET $apiUrl (for SHA)")
+
+            var sha: String? = null
+            try {
+                val getConn = URL(apiUrl).openConnection() as HttpURLConnection
+                getConn.setRequestProperty("Authorization", "token ${getToken()}")
+                getConn.setRequestProperty("Accept", "application/vnd.github.v3+json")
+                getConn.connectTimeout = 15000
+                getConn.readTimeout = 15000
+                if (getConn.responseCode == 200) {
+                    val getResponse = getConn.inputStream.bufferedReader().readText()
+                    sha = JSONObject(getResponse).optString("sha", null)
+                }
+            } catch (e: Exception) {
+                Logger.w("GitHubHelper.saveFile: failed to get SHA: ${e.message}")
+            }
+
+            val encoded = Base64.encodeToString(content.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+            val body = JSONObject().apply {
+                put("message", "Update via ClipboardMerger")
+                put("content", encoded)
+                if (sha != null) put("sha", sha)
+            }
+
+            Logger.d("GitHubHelper.saveFile: PUT $apiUrl")
+            val connection = URL(apiUrl).openConnection() as HttpURLConnection
+            connection.requestMethod = "PUT"
+            connection.setRequestProperty("Authorization", "token ${getToken()}")
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
+            connection.doOutput = true
+            connection.connectTimeout = 15000
+            connection.readTimeout = 15000
+
+            connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+
+            val code = connection.responseCode
+            if (code in 200..201) {
+                val resp = connection.inputStream.bufferedReader().readText()
+                Logger.d("GitHubHelper.saveFile: success, HTTP $code")
+                Result.success(resp)
+            } else {
+                val errorBody = connection.errorStream?.bufferedReader()?.readText() ?: ""
+                Result.failure(Exception("HTTP $code: $errorBody"))
+            }
+        } catch (e: Exception) {
+            Logger.w("GitHubHelper.saveFile failed: ${e.message}")
+            Result.failure(e)
+        }
+    }
+
+    companion object {
+        private const val PREFS_NAME = "github_settings"
+        private const val KEY_REPO_URL = "repo_url"
+        private const val KEY_TOKEN = "token"
+        private const val KEY_FILE_PATH = "file_path"
+    }
+}
