@@ -409,11 +409,11 @@ class MainActivity : AppCompatActivity() {
                 when (tab?.position) {
                     0 -> {
                         binding.layoutClipboard.visibility = View.VISIBLE
-                        binding.layoutGithub.visibility = View.GONE
+                        binding.layoutGithub.root.visibility = View.GONE
                     }
                     1 -> {
                         binding.layoutClipboard.visibility = View.GONE
-                        binding.layoutGithub.visibility = View.VISIBLE
+                        binding.layoutGithub.root.visibility = View.VISIBLE
                     }
                 }
             }
@@ -424,7 +424,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupGitHubButtons() {
         Logger.d("setupGitHubButtons")
-        val githubRoot = binding.layoutGithub
+        val githubRoot = binding.layoutGithub.root
         val etContent = githubRoot.findViewById<EditText>(R.id.etGithubContent)
         val btnEdit = githubRoot.findViewById<TextView>(R.id.btnGithubEdit)
         val btnSave = githubRoot.findViewById<TextView>(R.id.btnGithubSave)
@@ -450,11 +450,11 @@ class MainActivity : AppCompatActivity() {
                     result.onSuccess { content ->
                         etContent.setText(content)
                         etContent.isEnabled = true
-                        tvStatus.text = getString(R.string.github_fetch_success, content.length)
+                        tvStatus.text = this@MainActivity.getString(R.string.github_fetch_success, content.length)
                         Toast.makeText(this@MainActivity, R.string.github_fetch_success_toast, Toast.LENGTH_SHORT).show()
                     }.onFailure { e ->
-                        tvStatus.text = getString(R.string.github_fetch_failed, e.message ?: "")
-                        Toast.makeText(this@MainActivity, getString(R.string.github_fetch_failed, e.message ?: ""), Toast.LENGTH_LONG).show()
+                        tvStatus.text = this@MainActivity.getString(R.string.github_fetch_failed, e.message ?: "")
+                        Toast.makeText(this@MainActivity, this@MainActivity.getString(R.string.github_fetch_failed, e.message ?: ""), Toast.LENGTH_LONG).show()
                     }
                 }
             }
@@ -481,11 +481,11 @@ class MainActivity : AppCompatActivity() {
                     btnEdit.isEnabled = true
                     btnSave.isEnabled = true
                     result.onSuccess {
-                        tvStatus.text = getString(R.string.github_save_success)
+                        tvStatus.text = this@MainActivity.getString(R.string.github_save_success)
                         Toast.makeText(this@MainActivity, R.string.github_save_success_toast, Toast.LENGTH_SHORT).show()
                     }.onFailure { e ->
-                        tvStatus.text = getString(R.string.github_save_failed, e.message ?: "")
-                        Toast.makeText(this@MainActivity, getString(R.string.github_save_failed, e.message ?: ""), Toast.LENGTH_LONG).show()
+                        tvStatus.text = this@MainActivity.getString(R.string.github_save_failed, e.message ?: "")
+                        Toast.makeText(this@MainActivity, this@MainActivity.getString(R.string.github_save_failed, e.message ?: ""), Toast.LENGTH_LONG).show()
                     }
                 }
             }
