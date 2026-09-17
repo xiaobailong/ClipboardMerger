@@ -8,6 +8,8 @@ import android.content.Intent
 import android.inputmethodservice.InputMethodService
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -129,8 +131,15 @@ class ClipboardInputMethodService : InputMethodService() {
                 if (!selectedText.isNullOrEmpty()) {
                     ic.commitText("", 1)
                     tvStatus?.text = "已删除选中文字 (${selectedText.length} chars)"
-                } else {
+                } else if (selectedText != null && selectedText.isEmpty()) {
                     tvStatus?.text = "⚠ 未选中任何文字"
+                } else {
+                    Logger.d("IMEService: delete - selectedText is null (likely WebView), trying commitText + DEL key")
+                    ic.commitText("", 1)
+                    val now = SystemClock.uptimeMillis()
+                    ic.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL, 0, 0, 0, 0, KeyEvent.FLAG_SOFT_KEYBOARD))
+                    ic.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DEL, 0, 0, 0, 0, KeyEvent.FLAG_SOFT_KEYBOARD))
+                    tvStatus?.text = "已删除选中内容"
                 }
             } else {
                 tvStatus?.text = "⚠ 无输入连接"
