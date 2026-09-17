@@ -245,8 +245,7 @@ class ClipboardInputMethodService : InputMethodService() {
     }
 
     private fun getCurrentInputMethodId(): String {
-        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-        return imm.currentInputMethodInfo?.id ?: ""
+        return componentName.flattenToShortString()
     }
 
     companion object {
