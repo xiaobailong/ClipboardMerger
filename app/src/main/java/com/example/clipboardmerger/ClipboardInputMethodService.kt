@@ -5,6 +5,8 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.inputmethodservice.InputMethodService
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -15,6 +17,8 @@ class ClipboardInputMethodService : InputMethodService() {
 
     private var clipboardManager: ClipboardManager? = null
     private var lastClipLabel: String = ""
+    private var tvStatus: TextView? = null
+    private val handler = Handler(Looper.getMainLooper())
 
     private val clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
         Logger.d("IMEService.ClipboardListener: onPrimaryClipChanged triggered")
@@ -70,7 +74,7 @@ class ClipboardInputMethodService : InputMethodService() {
         val btnPasteAll = view.findViewById<Button>(R.id.btnPasteAll)
         val btnSwitchBack = view.findViewById<Button>(R.id.btnSwitchBack)
         val btnDelete = view.findViewById<Button>(R.id.btnDelete)
-        val tvStatus = view.findViewById<TextView>(R.id.tvImeStatus)
+        tvStatus = view.findViewById<TextView>(R.id.tvImeStatus)
 
         btnClearClipboard.setOnClickListener {
             Logger.d("IMEService: clear system clipboard and all collected items")
@@ -78,7 +82,7 @@ class ClipboardInputMethodService : InputMethodService() {
             clipboardManager?.setPrimaryClip(clip)
             ClipboardRepository.clearAll(applicationContext)
             lastClipLabel = ""
-            tvStatus.text = "剪切板已清空"
+            tvStatus?.text = "剪切板已清空"
             val intent = Intent(ACTION_CLIPBOARD_UPDATED).apply {
                 setPackage(packageName)
             }
@@ -95,7 +99,7 @@ class ClipboardInputMethodService : InputMethodService() {
                     currentInputConnection?.commitText(text, 1)
                 }
             } else {
-                tvStatus.text = "📋 No clip data (IME must be default)"
+                tvStatus?.text = "📋 No clip data (IME must be default)"
             }
         }
 
@@ -104,7 +108,7 @@ class ClipboardInputMethodService : InputMethodService() {
             val items = ClipboardRepository.loadItems(applicationContext)
             if (items.isEmpty()) {
                 Logger.d("IMEService: pasteAll - no items in repository")
-                tvStatus.text = "📋 No items collected yet"
+                tvStatus?.text = "📋 No items collected yet"
                 return@setOnClickListener
             }
             val merged = items
@@ -112,7 +116,7 @@ class ClipboardInputMethodService : InputMethodService() {
                 .joinToString(separator = "\n") { it.content }
             Logger.d("IMEService: pasteAll - ${items.size} items, merged len=${merged.length}")
             currentInputConnection?.commitText(merged, 1)
-            tvStatus.text = "✅ Pasted ${items.size} items"
+            tvStatus?.text = "✅ Pasted ${items.size} items"
         }
 
         btnDelete.setOnClickListener {
@@ -123,19 +127,34 @@ class ClipboardInputMethodService : InputMethodService() {
                 Logger.d("IMEService: delete - selectedText=[${selectedText}], len=${selectedText?.length}")
                 if (!selectedText.isNullOrEmpty()) {
                     ic.commitText("", 1)
-                    tvStatus.text = "已删除选中文字 (${selectedText.length} chars)"
+                    tvStatus?.text = "已删除选中文字 (${selectedText.length} chars)"
                 } else {
-                    tvStatus.text = "⚠ 未选中任何文字"
+                    tvStatus?.text = "⚠ 未选中任何文字"
                 }
             } else {
-                tvStatus.text = "⚠ 无输入连接"
+                tvStatus?.text = "⚠ 无输入连接"
             }
         }
 
         btnSwitchBack.setOnClickListener {
             Logger.d("IMEService: switch IME button clicked")
+            try {
+                switchToTargetIme(0)
+            } catch (e: Throwable) {
+                Logger.e("IMEService: switchToTargetIme exception: ${e.message}", e)
+                try {
+                    val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                    imm.showInputMethodPicker()
+                } catch (e2: Exception) {
+                    Logger.e("IMEService: fallback picker also failed: ${e2.message}", e2)
+                }
+            }
+        }
+        btnSwitchBack.setOnLongClickListener {
+            Logger.d("IMEService: switch IME button long-pressed, showing picker")
             val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
             imm.showInputMethodPicker()
+            true
         }
 
         return view
@@ -155,6 +174,79 @@ class ClipboardInputMethodService : InputMethodService() {
         Logger.d("========== ClipboardInputMethodService.onDestroy ==========")
         clipboardManager?.removePrimaryClipChangedListener(clipboardListener)
         super.onDestroy()
+    }
+
+    private fun switchToTargetIme(targetIndex: Int) {
+        Logger.d("IMEService.switchToTargetIme: ENTER targetIndex=$targetIndex")
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        val enabledImes = imm.enabledInputMethodList
+        Logger.d("IMEService.switchToTargetIme: enabledImes count=${enabledImes.size}")
+        for ((i, ime) in enabledImes.withIndex()) {
+            val label = ime.loadLabel(packageManager).toString()
+            Logger.d("IMEService.switchToTargetIme: [$i] id=${ime.id} label=$label")
+        }
+        if (enabledImes.isEmpty()) {
+            Logger.d("IMEService.switchToTargetIme: no enabled IMEs, showing picker")
+            imm.showInputMethodPicker()
+            return
+        }
+
+        if (targetIndex < 0 || targetIndex >= enabledImes.size) {
+            Logger.d("IMEService.switchToTargetIme: targetIndex=$targetIndex out of range [0..${enabledImes.size - 1}], showing picker")
+            imm.showInputMethodPicker()
+            return
+        }
+
+        Logger.d("IMEService.switchToTargetIme: val targetId...")
+        val targetId = enabledImes[targetIndex].id
+        Logger.d("IMEService.switchToTargetIme: targetId=$targetId")
+        Logger.d("IMEService.switchToTargetIme: val currentId...")
+        val currentId = getCurrentInputMethodId()
+        Logger.d("IMEService.switchToTargetIme: currentId=$currentId")
+        Logger.d("IMEService.switchToTargetIme: val currentIndex...")
+        val currentIndex = enabledImes.indexOfFirst { it.id == currentId }
+        Logger.d("IMEService.switchToTargetIme: currentIndex=$currentIndex")
+        val total = enabledImes.size
+
+        val steps = if (currentIndex < 0) {
+            targetIndex
+        } else {
+            (targetIndex - currentIndex + total) % total
+        }
+        Logger.d("IMEService.switchToTargetIme: steps=$steps")
+
+        if (steps == 0) {
+            Logger.d("IMEService.switchToTargetIme: already on target (index=$targetIndex, id=$targetId)")
+            return
+        }
+
+        Logger.d("IMEService.switchToTargetIme: current=$currentId (idx=$currentIndex), target=$targetId (idx=$targetIndex), steps=$steps")
+        tvStatus?.text = "切换中…"
+        switchNextN(steps, imm)
+    }
+
+    private fun switchNextN(remaining: Int, imm: InputMethodManager) {
+        Logger.d("IMEService.switchNextN: remaining=$remaining")
+        if (remaining <= 0) {
+            tvStatus?.text = "\uD83D\uDCD6 剪贴板监听"
+            Logger.d("IMEService.switchNextN: done")
+            return
+        }
+        try {
+            val token = window.window?.attributes?.token
+            Logger.d("IMEService.switchNextN: token=${token != null}")
+            imm.switchToNextInputMethod(token, false)
+        } catch (e: Exception) {
+            Logger.e("IMEService.switchNextN: switchToNextInputMethod failed: ${e.message}", e)
+        }
+        handler.postDelayed({
+            switchNextN(remaining - 1, imm)
+        }, 80)
+    }
+
+    private fun getCurrentInputMethodId(): String {
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        return imm.currentInputMethodInfo?.id ?: ""
     }
 
     companion object {
