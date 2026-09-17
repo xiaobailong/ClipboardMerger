@@ -1,5 +1,6 @@
 package com.example.clipboardmerger
 
+import android.content.ComponentName
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -245,7 +246,7 @@ class ClipboardInputMethodService : InputMethodService() {
     }
 
     private fun getCurrentInputMethodId(): String {
-        return componentName.flattenToShortString()
+        return ComponentName(this, this::class.java).flattenToShortString()
     }
 
     companion object {
