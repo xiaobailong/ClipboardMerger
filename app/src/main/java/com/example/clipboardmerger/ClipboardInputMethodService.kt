@@ -69,6 +69,7 @@ class ClipboardInputMethodService : InputMethodService() {
         val btnPasteLast = view.findViewById<Button>(R.id.btnPasteLast)
         val btnPasteAll = view.findViewById<Button>(R.id.btnPasteAll)
         val btnSwitchBack = view.findViewById<Button>(R.id.btnSwitchBack)
+        val btnDelete = view.findViewById<Button>(R.id.btnDelete)
         val tvStatus = view.findViewById<TextView>(R.id.tvImeStatus)
 
         btnClearClipboard.setOnClickListener {
@@ -112,6 +113,23 @@ class ClipboardInputMethodService : InputMethodService() {
             Logger.d("IMEService: pasteAll - ${items.size} items, merged len=${merged.length}")
             currentInputConnection?.commitText(merged, 1)
             tvStatus.text = "✅ Pasted ${items.size} items"
+        }
+
+        btnDelete.setOnClickListener {
+            Logger.d("IMEService: delete button clicked")
+            val ic = currentInputConnection
+            if (ic != null) {
+                val selectedText = ic.getSelectedText(0)
+                Logger.d("IMEService: delete - selectedText=[${selectedText}], len=${selectedText?.length}")
+                if (!selectedText.isNullOrEmpty()) {
+                    ic.commitText("", 1)
+                    tvStatus.text = "已删除选中文字 (${selectedText.length} chars)"
+                } else {
+                    tvStatus.text = "⚠ 未选中任何文字"
+                }
+            } else {
+                tvStatus.text = "⚠ 无输入连接"
+            }
         }
 
         btnSwitchBack.setOnClickListener {

@@ -65,6 +65,19 @@
             android:textSize="11sp" />
 
         <Button
+            android:id="@+id/btnDelete"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="3dp"
+            android:background="#FFD32F2F"
+            android:minHeight="0dp"
+            android:paddingHorizontal="6dp"
+            android:paddingVertical="2dp"
+            android:text="删除"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp" />
+
+        <Button
             android:id="@+id/btnClearClipboard"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
