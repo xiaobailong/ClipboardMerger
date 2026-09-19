@@ -20,6 +20,7 @@ object Logger {
     private var logFile: File? = null
     private var logFilePath: String = "N/A"
     private var initialized = false
+    private var enabled = true
 
     @Synchronized
     fun init(context: android.content.Context) {
@@ -80,7 +81,14 @@ object Logger {
         }
     }
 
+    fun setEnabled(enabled: Boolean) {
+        this.enabled = enabled
+    }
+
+    fun isEnabled(): Boolean = enabled
+
     fun d(message: String) {
+        if (!enabled) return
         val timestamp = timestampFormat.format(Date())
         val thread = Thread.currentThread().name
         val line = "[$timestamp][$thread] $message"
@@ -89,6 +97,7 @@ object Logger {
     }
 
     fun w(message: String) {
+        if (!enabled) return
         val timestamp = timestampFormat.format(Date())
         val thread = Thread.currentThread().name
         val line = "[$timestamp][$thread] WARN: $message"
@@ -97,6 +106,7 @@ object Logger {
     }
 
     fun e(message: String, throwable: Throwable? = null) {
+        if (!enabled) return
         val timestamp = timestampFormat.format(Date())
         val thread = Thread.currentThread().name
         val sb = StringBuilder()
@@ -111,6 +121,7 @@ object Logger {
     }
 
     private fun writeLine(line: String) {
+        if (!enabled) return
         val text = line + "\n"
         try {
             logFile?.let { file ->

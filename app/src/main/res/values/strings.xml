@@ -30,4 +30,8 @@
     <string name="github_settings_title">GitHub 仓库设置</string>
     <string name="github_save_settings">保存</string>
     <string name="github_settings_saved">设置已保存</string>
+
+    <string name="settings_title">全局设置</string>
+    <string name="settings_log_output">日志输出</string>
+    <string name="settings_log_hint">关闭后，所有日志输出将停止（包括文件日志和 Logcat 输出）</string>
 </resources>

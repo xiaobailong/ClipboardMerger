@@ -13,12 +13,15 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.SwitchCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.ItemTouchHelper
@@ -34,6 +37,11 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
 class MainActivity : AppCompatActivity() {
+
+    companion object {
+        private const val PREFS_NAME = "clipboard_merger_settings"
+        private const val KEY_LOG_ENABLED = "log_enabled"
+    }
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var viewModel: ClipboardViewModel
@@ -86,6 +94,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Logger.init(this)
+        loadLogSetting()
         Logger.d("========== onCreate ==========")
         Logger.d("SDK_INT=${Build.VERSION.SDK_INT}, MANUFACTURER=${Build.MANUFACTURER}, MODEL=${Build.MODEL}")
         Logger.d("Log file path: ${Logger.getLogPath()}")
@@ -540,6 +549,47 @@ class MainActivity : AppCompatActivity() {
                 val filePath = etFilePath.text.toString().trim()
                 githubHelper.saveSettings(repoUrl, token, filePath)
                 Toast.makeText(this, R.string.github_settings_saved, Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.toolbar_menu, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_settings -> {
+                showSettingsDialog()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    private fun loadLogSetting() {
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        val logEnabled = prefs.getBoolean(KEY_LOG_ENABLED, true)
+        Logger.setEnabled(logEnabled)
+    }
+
+    private fun showSettingsDialog() {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_settings, null)
+        val switchLogOutput = dialogView.findViewById<SwitchCompat>(R.id.switchLogOutput)
+        switchLogOutput.isChecked = Logger.isEnabled()
+
+        AlertDialog.Builder(this)
+            .setTitle(R.string.settings_title)
+            .setView(dialogView)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val enabled = switchLogOutput.isChecked
+                Logger.setEnabled(enabled)
+                getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                    .edit()
+                    .putBoolean(KEY_LOG_ENABLED, enabled)
+                    .apply()
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
