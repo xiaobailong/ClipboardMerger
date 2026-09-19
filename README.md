@@ -35,6 +35,7 @@
 - **一键清空** — IME 键盘中一键清空系统剪切板并清除全部收集记录
 - **滑动删除** — 列表项左滑快速删除
 - **GitHub 同步** — 支持将文本内容拉取/保存到 GitHub 仓库的指定文件，自动处理 Base64 编解码和 SHA 版本控制
+- **全局设置** — Toolbar 右侧设置按钮，支持全局日志输出开关
 - **调试日志** — 完整的日志输出，方便排查问题
 
 ---
@@ -215,7 +216,11 @@ versionName=1.26
 
 ## 日志与调试
 
-日志文件保存在设备外部存储：
+### 日志输出开关
+
+点击 Toolbar 右侧的 **设置图标**，可以打开「全局设置」弹窗。通过 **日志输出** 开关可以一键开启/关闭所有日志输出（包括文件日志和 Logcat 输出）。关闭后 `Logger` 的所有 `d/w/e` 调用将静默返回，不再产生任何日志。设置会被持久化保存，重启应用后保持生效。
+
+### 日志文件
 ```
 /storage/emulated/0/Download/ClipboardMerger/clipboard_merger_log_YYYY-MM-DD.txt
 ```
@@ -263,13 +268,16 @@ ClipboardMerger/
 │       │   ├── ClipboardItem.kt               # 数据模型
 │       │   ├── GitHubHelper.kt                # GitHub API 交互（拉取/保存文件）
 │       │   └── Logger.kt                      # 日志工具
-│       └── res/
+│       ├── res/
 │           ├── layout/
 │           │   ├── activity_main.xml           # 主界面布局（含 TabLayout）
 │           │   ├── content_github.xml          # GitHub Tab 页面布局
 │           │   ├── dialog_github_settings.xml  # GitHub 设置弹窗布局
+│           │   ├── dialog_settings.xml         # 全局设置弹窗布局
 │           │   ├── ime_view.xml                # IME 键盘布局
 │           │   └── item_clipboard.xml          # 列表项布局
+│           ├── menu/
+│           │   └── toolbar_menu.xml            # Toolbar 设置菜单
 │           ├── values/
 │           │   ├── strings.xml                 # 字符串资源
 │           │   ├── colors.xml                  # 颜色定义
