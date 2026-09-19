@@ -101,6 +101,7 @@ class MainActivity : AppCompatActivity() {
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        setSupportActionBar(binding.toolbar)
 
         val versionName = getVersionName()
         binding.toolbar.subtitle = "v$versionName"
