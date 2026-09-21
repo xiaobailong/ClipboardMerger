@@ -166,6 +166,9 @@ App 主界面标题栏显示当前版本号（如 `v1.29`），与 `version.prop
 # 构建 APK（自动递增版本号）
 build.bat
 
+# 构建 + Git推送 + GitHub Release（自动递增版本、打tag、推送代码、创建Release并上传APK）
+build.bat release
+
 # 首次使用：安装缺失的 SDK 组件
 build.bat setup
 
@@ -212,6 +215,23 @@ versionName=1.26
 
 每次执行 `build.bat` 会自动递增 `versionCode`。
 
+### 发布 Release
+
+使用 `build.bat release` 可以一键完成构建 → 发布全流程：
+
+1. **检查环境** — 验证 `gh` CLI 已安装且已认证
+2. **递增版本** — 自动递增 `versionCode`
+3. **编译 APK** — 清理旧产物并编译新 APK
+4. **Git 提交** — 自动提交 `version.properties` 变更（commit message: `release: vX.XX`）
+5. **推送代码** — `git push origin main`
+6. **创建标签** — 自动打 `vX.XX` 标签并推送
+7. **GitHub Release** — 通过 `gh release create` 创建 Release 并上传 APK 附件
+
+**前置条件**：
+- 安装 [GitHub CLI](https://cli.github.com/)：`winget install --id GitHub.cli`
+- 登录认证：`gh auth login`
+- 确保 `gh auth status` 显示 Token 有 `repo` 权限
+
 ---
 
 ## 日志与调试
@@ -247,7 +267,7 @@ adb pull /sdcard/Download/ClipboardMerger/ .
 ```
 ClipboardMerger/
 ├── README.md                          # 本文件
-├── build.bat                          # 一键构建脚本
+├── build.bat                          # 一键构建脚本（含 release 发布）
 ├── clean.bat                          # 清理脚本
 ├── version.properties                 # 版本号配置
 ├── build.gradle.kts                   # 根项目构建配置
