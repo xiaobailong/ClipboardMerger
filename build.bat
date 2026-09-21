@@ -127,14 +127,14 @@ echo ============================================
 echo.
 
 echo [1/6] 检查gh CLI...
-where gh >nul 2>&1
+where gh >nul 2>nul
 if %ERRORLEVEL% neq 0 (
-    echo [错误] GitHub CLI (gh) 未安装或不在PATH中！
+    echo [错误] GitHub CLI ^(gh^) 未安装或不在PATH中！
     echo        安装: winget install --id GitHub.cli
     pause
     exit /b 1
 )
-for /f "tokens=3" %%i in ('gh --version 2^>^&1 ^| findstr /r "^gh version"') do echo       gh版本: %%i
+for /f "tokens=3" %%i in ('gh --version 2^>nul ^| findstr /r "^gh version"') do echo       gh版本: %%i
 
 echo [2/6] 检查git状态...
 call git diff --quiet
