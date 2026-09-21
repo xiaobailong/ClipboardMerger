@@ -13,7 +13,8 @@ REM ============================================
 set "JAVA_HOME=D:\Tools\DevTools\Java\JDK\jdk-21.0.10-oracle"
 set "ANDROID_HOME=D:\Tools\DevTools\Android\Sdk"
 set "ANDROID_SDK_ROOT=D:\Tools\DevTools\Android\Sdk"
-set "PATH=D:\Tools\DevTools\Java\JDK\jdk-21.0.10-oracle\bin;D:\Tools\DevTools\gradle\gradle-8.5\bin;C:\Program Files\GitHub CLI;%PATH%"
+set "PATH=D:\Tools\DevTools\Java\JDK\jdk-21.0.10-oracle\bin;D:\Tools\DevTools\gradle\gradle-8.5\bin;%PATH%"
+set "GH_EXE=C:\Program Files\GitHub CLI\gh.exe"
 
 cd /d d:\WorkSpace\test\ClipboardMerger 2>nul || (
     echo [错误] 项目目录不存在
@@ -127,14 +128,14 @@ echo ============================================
 echo.
 
 echo [1/6] 检查gh CLI...
-where gh >nul 2>nul
-if %ERRORLEVEL% neq 0 (
-    echo [错误] GitHub CLI ^(gh^) 未安装或不在PATH中！
+if not exist "%GH_EXE%" (
+    echo [错误] GitHub CLI ^(gh^) 未安装！
+    echo        路径: %GH_EXE%
     echo        安装: winget install --id GitHub.cli
     pause
     exit /b 1
 )
-for /f "tokens=3" %%i in ('gh --version 2^>nul ^| findstr /r "^gh version"') do echo       gh版本: %%i
+for /f "tokens=3" %%i in ('"%GH_EXE%" --version 2^>nul ^| findstr /r "^gh version"') do echo       gh版本: %%i
 
 echo [2/6] 检查git状态...
 call git diff --quiet
@@ -208,7 +209,7 @@ if %ERRORLEVEL% neq 0 (
 )
 
 echo       创建GitHub Release并上传APK...
-call gh release create "%TAG%" "%APK_PATH%" ^
+call "%GH_EXE%" release create "%TAG%" "%APK_PATH%" ^
     --title "%TAG%" ^
     --notes "ClipboardMerger %TAG% (build %V_CODE%)" ^
     --repo xiaobailong/ClipboardMerger
