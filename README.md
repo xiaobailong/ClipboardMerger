@@ -203,6 +203,7 @@ build.bat clean
 编辑 `build.bat` 和 `gradle.properties`，修改以下变量：
 - `JAVA_HOME` — JDK 安装路径
 - `ANDROID_HOME` — Android SDK 路径
+- `GH_EXE` — GitHub CLI (`gh.exe`) 绝对路径（默认 `C:\Program Files\GitHub CLI\gh.exe`）
 - `org.gradle.java.home` — Gradle 使用的 JDK 路径
 
 ### 版本管理
@@ -219,7 +220,7 @@ versionName=1.26
 
 使用 `build.bat release` 可以一键完成构建 → 发布全流程：
 
-1. **检查环境** — 验证 `gh` CLI 已安装且已认证
+1. **检查环境** — 通过 `GH_EXE` 绝对路径检查 `gh` CLI 是否存在
 2. **递增版本** — 自动递增 `versionCode`
 3. **编译 APK** — 清理旧产物并编译新 APK
 4. **Git 提交** — 自动提交 `version.properties` 变更（commit message: `release: vX.XX`）
@@ -231,6 +232,7 @@ versionName=1.26
 - 安装 [GitHub CLI](https://cli.github.com/)：`winget install --id GitHub.cli`
 - 登录认证：`gh auth login`
 - 确保 `gh auth status` 显示 Token 有 `repo` 权限
+- 若 `gh.exe` 未安装在默认路径，编辑 `build.bat` 中 `GH_EXE` 变量
 
 ---
 
