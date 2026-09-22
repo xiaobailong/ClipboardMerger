@@ -11,13 +11,16 @@ if not exist "build\logs" mkdir "build\logs"
 for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"') do set "_CM_LOG_TS=%%i"
 set "_CM_LOGFILE=build\logs\build_%_CM_LOG_TS%.log"
 echo [%_CM_LOG_TS%] ClipboardMerger Build Start > "%_CM_LOGFILE%"
-echo %_CM_LOGFILE%> "build\logs\_logpath.tmp"
-"%~f0" %* 2>&1 | powershell -NoProfile -Command "$log = (Get-Content build\logs\_logpath.tmp -Raw).Trim(); $input | ForEach-Object { Add-Content -Path $log -Value $_ -Encoding UTF8; Write-Output $_ }"
+echo 正在构建，日志文件: %_CM_LOGFILE%
+call "%~f0" %* 1>> "%_CM_LOGFILE%" 2>&1
+set _CM_BUILD_RESULT=%ERRORLEVEL%
 echo ============================================ >> "%_CM_LOGFILE%"
-del "build\logs\_logpath.tmp" 2>nul
 echo 日志已保存: %_CM_LOGFILE%
+echo ----------------------------------------
+type "%_CM_LOGFILE%"
+echo ----------------------------------------
 timeout /t 10 > nul
-exit /b %ERRORLEVEL%
+exit /b %_CM_BUILD_RESULT%
 
 :skip_log
 
