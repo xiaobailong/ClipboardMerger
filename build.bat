@@ -168,13 +168,18 @@ if errorlevel 1 (
         exit /b 1
     )
 ) else (
-    echo       版本号未变更，跳过提交，继续发布...
-    echo       推送已有提交...
-    call git push origin main
+    echo       版本号未变更（已提交），检测推送状态...
+    call git diff origin/main..HEAD --quiet
     if errorlevel 1 (
-        echo [错误] git push 失败！
-        call :countdown
-        exit /b 1
+        echo       有未推送的提交，正在推送...
+        call git push origin main
+        if errorlevel 1 (
+            echo [错误] git push 失败！
+            call :countdown
+            exit /b 1
+        )
+    ) else (
+        echo       已推送，直接创建Release...
     )
 
     echo       创建/更新标签 %TAG%...
@@ -306,13 +311,18 @@ if errorlevel 1 (
         exit /b 1
     )
 ) else (
-    echo       版本号未变更，跳过提交，继续发布...
-    echo       推送已有提交...
-    call git push origin main
+    echo       版本号未变更（已提交），检测推送状态...
+    call git diff origin/main..HEAD --quiet
     if errorlevel 1 (
-        echo [错误] git push 失败！
-        pause
-        exit /b 1
+        echo       有未推送的提交，正在推送...
+        call git push origin main
+        if errorlevel 1 (
+            echo [错误] git push 失败！
+            pause
+            exit /b 1
+        )
+    ) else (
+        echo       已推送，直接创建Release...
     )
 
     echo       创建/更新标签 %TAG%...
