@@ -168,7 +168,32 @@ if errorlevel 1 (
         exit /b 1
     )
 ) else (
-    echo       版本号未变更，跳过发布
+    echo       版本号未变更，跳过提交，继续发布...
+    echo       推送已有提交...
+    call git push origin main
+    if errorlevel 1 (
+        echo [错误] git push 失败！
+        call :countdown
+        exit /b 1
+    )
+
+    echo       创建/更新标签 %TAG%...
+    call git tag -f -a "%TAG%" -m "Release %TAG% - build %V_CODE%" 2>nul
+    call git push origin "%TAG%" -f
+    if errorlevel 1 (
+        echo [错误] tag push 失败！
+        call :countdown
+        exit /b 1
+    )
+
+    echo       创建GitHub Release并上传APK...
+    call "%GH_EXE%" release create "%TAG%" "%APK_PATH%" ^
+        --title "%TAG%" ^
+        --notes "ClipboardMerger %TAG% (build %V_CODE%)" ^
+        --repo xiaobailong/ClipboardMerger
+    if errorlevel 1 (
+        echo [警告] Release创建失败(可能已存在)，请手动检查
+    )
 )
 
 echo.
@@ -281,7 +306,32 @@ if errorlevel 1 (
         exit /b 1
     )
 ) else (
-    echo       版本号未变更，跳过发布
+    echo       版本号未变更，跳过提交，继续发布...
+    echo       推送已有提交...
+    call git push origin main
+    if errorlevel 1 (
+        echo [错误] git push 失败！
+        pause
+        exit /b 1
+    )
+
+    echo       创建/更新标签 %TAG%...
+    call git tag -f -a "%TAG%" -m "Release %TAG% - build %V_CODE%" 2>nul
+    call git push origin "%TAG%" -f
+    if errorlevel 1 (
+        echo [错误] tag push 失败！
+        pause
+        exit /b 1
+    )
+
+    echo       创建GitHub Release并上传APK...
+    call "%GH_EXE%" release create "%TAG%" "%APK_PATH%" ^
+        --title "%TAG%" ^
+        --notes "ClipboardMerger %TAG% (build %V_CODE%)" ^
+        --repo xiaobailong/ClipboardMerger
+    if errorlevel 1 (
+        echo [警告] Release创建失败(可能已存在)，请手动检查
+    )
 )
 
 echo.
