@@ -93,8 +93,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Logger.init(this)
         loadLogSetting()
+        Logger.init(this)
         Logger.d("========== onCreate ==========")
         Logger.d("SDK_INT=${Build.VERSION.SDK_INT}, MANUFACTURER=${Build.MANUFACTURER}, MODEL=${Build.MODEL}")
         Logger.d("Log file path: ${Logger.getLogPath()}")

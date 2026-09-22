@@ -4,10 +4,10 @@ title ClipboardMerger Build
 
 REM ============================================
 REM  ClipboardMerger 一键构建脚本
-REM  用法: 双击运行        (构建+递增版本)
+REM  用法: 双击运行        (构建+递增版本+GitHub Release)
 REM        build setup     (安装 Android SDK 组件)
 REM        build clean     (清理构建产物)
-REM        build release   (构建+Git推送+GitHub Release)
+REM        build release   (同双击，构建+Git推送+GitHub Release)
 REM ============================================
 
 set "JAVA_HOME=D:\Tools\DevTools\Java\JDK\jdk-21.0.10-oracle"
@@ -46,7 +46,7 @@ if %ERRORLEVEL% neq 0 (
 )
 echo.
 echo [完成] SDK 安装成功。
-pause
+call :countdown
 exit /b 0
 
 REM ============================================
@@ -64,7 +64,7 @@ if exist "*.apk" del /q "*.apk" 2>nul
 if exist "*.aab" del /q "*.aab" 2>nul
 echo.
 echo [完成] 清理完成。
-pause
+call :countdown
 exit /b 0
 
 REM ============================================
@@ -77,20 +77,20 @@ echo  ClipboardMerger 构建 - %date% %time%
 echo ============================================
 echo.
 
-echo [1/4] 递增版本号...
+echo [1/5] 递增版本号...
 call "D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" incrementVersion --no-daemon --console=plain
 if %ERRORLEVEL% neq 0 (
     echo [错误] 版本号递增失败！Exit code=%ERRORLEVEL%
-    pause
+    call :countdown
     exit /b 1
 )
 echo       完成。
 
-echo [2/4] 清理旧产物...
+echo [2/5] 清理旧产物...
 call "D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" clean --no-daemon --console=plain
 echo       完成。
 
-echo [3/4] 编译 APK（请耐心等待）...
+echo [3/5] 编译 APK（请耐心等待）...
 call "D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" assembleDebug --no-daemon --console=plain
 set BUILD_EXIT=%ERRORLEVEL%
 
@@ -99,7 +99,7 @@ if %BUILD_EXIT% neq 0 (
     echo ============================================
     echo  构建失败！Exit code=%BUILD_EXIT%
     echo ============================================
-    pause
+    call :countdown
     exit /b 1
 )
 
@@ -109,12 +109,73 @@ echo ============================================
 if exist "*.apk" del /q "*.apk" 2>nul
 for /f "delims=" %%f in ('dir /s /b build\outputs\apk\debug\*.apk 2^>nul') do (
     copy /y "%%f" "." > nul
+    set "APK_PATH=%%f"
     echo  APK: %%~nxf  (%%~zf bytes)
 )
 echo.
 echo  APK 已复制到项目根目录。
 echo.
-pause
+
+echo [4/5] 发布到 GitHub Release...
+echo.
+echo       检查gh CLI...
+if not exist "%GH_EXE%" (
+    echo [错误] GitHub CLI ^(gh^) 未安装！
+    echo        路径: %GH_EXE%
+    echo        安装: winget install --id GitHub.cli
+    call :countdown
+    exit /b 1
+)
+for /f "tokens=3" %%i in ('"%GH_EXE%" --version 2^>nul ^| findstr /r "^gh version"') do echo       gh版本: %%i
+
+echo       读取版本信息...
+for /f "tokens=2 delims==" %%i in ('findstr "versionName=" version.properties') do set "V_NAME=%%i"
+for /f "tokens=2 delims==" %%i in ('findstr "versionCode=" version.properties') do set "V_CODE=%%i"
+set "TAG=v%V_NAME%"
+echo       版本: %TAG% (code=%V_CODE%)
+
+echo       提交版本变更...
+call git add version.properties
+call git commit -m "release: %TAG% (build %V_CODE%)"
+if %ERRORLEVEL% neq 0 (
+    echo [警告] git commit 失败或无变更
+)
+
+echo       推送代码...
+call git push origin main
+if %ERRORLEVEL% neq 0 (
+    echo [错误] git push 失败！
+    call :countdown
+    exit /b 1
+)
+
+echo       创建标签 %TAG%...
+call git tag -a "%TAG%" -m "Release %TAG% - build %V_CODE%"
+call git push origin "%TAG%"
+if %ERRORLEVEL% neq 0 (
+    echo [错误] tag push 失败！
+    call :countdown
+    exit /b 1
+)
+
+echo       创建GitHub Release并上传APK...
+call "%GH_EXE%" release create "%TAG%" "%APK_PATH%" ^
+    --title "%TAG%" ^
+    --notes "ClipboardMerger %TAG% (build %V_CODE%)" ^
+    --repo xiaobailong/ClipboardMerger
+if %ERRORLEVEL% neq 0 (
+    echo [错误] GitHub Release创建失败！
+    call :countdown
+    exit /b 1
+)
+
+echo.
+echo ============================================
+echo  构建 ^& 发布成功！
+echo  版本: %TAG%
+echo  GitHub Release已创建并上传APK
+echo ============================================
+call :countdown
 exit /b 0
 
 REM ============================================
@@ -226,6 +287,14 @@ echo  版本: %TAG%
 echo  APK:  %APK_PATH%
 echo  GitHub Release已创建并上传APK
 echo ============================================
-echo.
-pause
+call :countdown
 exit /b 0
+
+REM ============================================
+REM  60秒倒计时关闭窗口
+REM ============================================
+:countdown
+echo.
+echo 所有步骤已完成，窗口将在 60 秒后自动关闭，按任意键立即关闭...
+timeout /t 60
+goto :eof

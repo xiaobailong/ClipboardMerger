@@ -40,8 +40,10 @@ object Logger {
         sb.append("=== Log: $result ===\n")
 
         sb.append("=== Log started ===")
-        writeLine(sb.toString())
-        android.util.Log.d(TAG, sb.toString())
+        if (enabled) {
+            writeLine(sb.toString())
+            android.util.Log.d(TAG, sb.toString())
+        }
     }
 
     private fun trySetupLog(): String {
@@ -72,12 +74,16 @@ object Logger {
                 for (file in logFiles) {
                     if (file.lastModified() < cutoffTime) {
                         val deleted = file.delete()
-                        android.util.Log.d(TAG, "cleanOldLogs: ${file.name} lastModified=${dateFormat.format(Date(file.lastModified()))}, deleted=$deleted")
+                        if (enabled) {
+                            android.util.Log.d(TAG, "cleanOldLogs: ${file.name} lastModified=${dateFormat.format(Date(file.lastModified()))}, deleted=$deleted")
+                        }
                     }
                 }
             }
         } catch (e: Exception) {
-            android.util.Log.w(TAG, "cleanOldLogs failed: ${e.message}")
+            if (enabled) {
+                android.util.Log.w(TAG, "cleanOldLogs failed: ${e.message}")
+            }
         }
     }
 
