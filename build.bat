@@ -126,7 +126,7 @@ if not exist "%GH_EXE%" (
     call :countdown
     exit /b 1
 )
-for /f "tokens=3" %%i in ('"%GH_EXE%" --version 2^>nul ^| findstr /r "^gh version"') do echo       gh版本: %%i
+for /f "usebackq tokens=3" %%i in (`"%GH_EXE%" --version 2^>nul ^| findstr /r "^gh version"`) do echo       gh版本: %%i
 
 echo       读取版本信息...
 for /f "tokens=2 delims==" %%i in ('findstr "versionName=" version.properties') do set "V_NAME=%%i"
@@ -136,37 +136,39 @@ echo       版本: %TAG% (code=%V_CODE%)
 
 echo       提交版本变更...
 call git add version.properties
-call git commit -m "release: %TAG% (build %V_CODE%)"
-if %ERRORLEVEL% neq 0 (
-    echo [警告] git commit 失败或无变更
-)
+call git diff --cached --quiet
+if errorlevel 1 (
+    call git commit -m "release: %TAG% (build %V_CODE%)"
 
-echo       推送代码...
-call git push origin main
-if %ERRORLEVEL% neq 0 (
-    echo [错误] git push 失败！
-    call :countdown
-    exit /b 1
-)
+    echo       推送代码...
+    call git push origin main
+    if errorlevel 1 (
+        echo [错误] git push 失败！
+        call :countdown
+        exit /b 1
+    )
 
-echo       创建标签 %TAG%...
-call git tag -a "%TAG%" -m "Release %TAG% - build %V_CODE%"
-call git push origin "%TAG%"
-if %ERRORLEVEL% neq 0 (
-    echo [错误] tag push 失败！
-    call :countdown
-    exit /b 1
-)
+    echo       创建标签 %TAG%...
+    call git tag -a "%TAG%" -m "Release %TAG% - build %V_CODE%"
+    call git push origin "%TAG%"
+    if errorlevel 1 (
+        echo [错误] tag push 失败！
+        call :countdown
+        exit /b 1
+    )
 
-echo       创建GitHub Release并上传APK...
-call "%GH_EXE%" release create "%TAG%" "%APK_PATH%" ^
-    --title "%TAG%" ^
-    --notes "ClipboardMerger %TAG% (build %V_CODE%)" ^
-    --repo xiaobailong/ClipboardMerger
-if %ERRORLEVEL% neq 0 (
-    echo [错误] GitHub Release创建失败！
-    call :countdown
-    exit /b 1
+    echo       创建GitHub Release并上传APK...
+    call "%GH_EXE%" release create "%TAG%" "%APK_PATH%" ^
+        --title "%TAG%" ^
+        --notes "ClipboardMerger %TAG% (build %V_CODE%)" ^
+        --repo xiaobailong/ClipboardMerger
+    if errorlevel 1 (
+        echo [错误] GitHub Release创建失败！
+        call :countdown
+        exit /b 1
+    )
+) else (
+    echo       版本号未变更，跳过发布
 )
 
 echo.
@@ -196,7 +198,7 @@ if not exist "%GH_EXE%" (
     pause
     exit /b 1
 )
-for /f "tokens=3" %%i in ('"%GH_EXE%" --version 2^>nul ^| findstr /r "^gh version"') do echo       gh版本: %%i
+for /f "usebackq tokens=3" %%i in (`"%GH_EXE%" --version 2^>nul ^| findstr /r "^gh version"`) do echo       gh版本: %%i
 
 echo [2/6] 检查git状态...
 call git diff --quiet
@@ -247,37 +249,39 @@ echo [6/6] Git提交并推送 + GitHub Release...
 echo.
 echo       提交版本变更...
 call git add version.properties
-call git commit -m "release: %TAG% (build %V_CODE%)"
-if %ERRORLEVEL% neq 0 (
-    echo [警告] git commit 失败或无变更
-)
+call git diff --cached --quiet
+if errorlevel 1 (
+    call git commit -m "release: %TAG% (build %V_CODE%)"
 
-echo       推送代码...
-call git push origin main
-if %ERRORLEVEL% neq 0 (
-    echo [错误] git push 失败！
-    pause
-    exit /b 1
-)
+    echo       推送代码...
+    call git push origin main
+    if errorlevel 1 (
+        echo [错误] git push 失败！
+        pause
+        exit /b 1
+    )
 
-echo       创建标签 %TAG%...
-call git tag -a "%TAG%" -m "Release %TAG% - build %V_CODE%"
-call git push origin "%TAG%"
-if %ERRORLEVEL% neq 0 (
-    echo [错误] tag push 失败！
-    pause
-    exit /b 1
-)
+    echo       创建标签 %TAG%...
+    call git tag -a "%TAG%" -m "Release %TAG% - build %V_CODE%"
+    call git push origin "%TAG%"
+    if errorlevel 1 (
+        echo [错误] tag push 失败！
+        pause
+        exit /b 1
+    )
 
-echo       创建GitHub Release并上传APK...
-call "%GH_EXE%" release create "%TAG%" "%APK_PATH%" ^
-    --title "%TAG%" ^
-    --notes "ClipboardMerger %TAG% (build %V_CODE%)" ^
-    --repo xiaobailong/ClipboardMerger
-if %ERRORLEVEL% neq 0 (
-    echo [错误] GitHub Release创建失败！
-    pause
-    exit /b 1
+    echo       创建GitHub Release并上传APK...
+    call "%GH_EXE%" release create "%TAG%" "%APK_PATH%" ^
+        --title "%TAG%" ^
+        --notes "ClipboardMerger %TAG% (build %V_CODE%)" ^
+        --repo xiaobailong/ClipboardMerger
+    if errorlevel 1 (
+        echo [错误] GitHub Release创建失败！
+        pause
+        exit /b 1
+    )
+) else (
+    echo       版本号未变更，跳过发布
 )
 
 echo.
