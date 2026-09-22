@@ -1,5 +1,20 @@
 @echo off
 chcp 65001 > nul
+
+REM ==== 日志初始化 ====
+if not defined _CM_LOG_ACTIVE (
+    set "_CM_LOG_ACTIVE=1"
+    if not exist "build\logs" mkdir "build\logs"
+    for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"') do set "_CM_LOG_TS=%%i"
+    set "_CM_LOGFILE=build\logs\build_%_CM_LOG_TS%.log"
+    echo [%_CM_LOG_TS%] ClipboardMerger Build Start > "%_CM_LOGFILE%"
+    "%~f0" %* 2>&1 | powershell -NoProfile -Command "$input | ForEach-Object { $_ | Out-File -FilePath '%_CM_LOGFILE%' -Append -Encoding utf8; Write-Output $_ }"
+    echo ============================================ >> "%_CM_LOGFILE%"
+    echo 日志已保存: %_CM_LOGFILE%
+    timeout /t 10 > nul
+    exit /b %ERRORLEVEL%
+)
+
 title ClipboardMerger Build
 
 REM ============================================
