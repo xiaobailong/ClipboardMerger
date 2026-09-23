@@ -43,3 +43,6 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.bak
+
+# Cline 工作临时目录：整目录忽略（约定见 .clinerules/tmp-files.md / memory-bank ADR-002），可随时整目录删除
+/tmp/

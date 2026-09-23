@@ -31,7 +31,23 @@
     <string name="github_save_settings">保存</string>
     <string name="github_settings_saved">设置已保存</string>
 
-    <string name="settings_title">全局设置</string>
+    <string name="menu_more">更多</string>
+    <string name="settings_log">日志</string>
+    <string name="settings_about">关于</string>
+    <string name="settings_log_title">日志设置</string>
     <string name="settings_log_output">日志输出</string>
-    <string name="settings_log_hint">关闭后，所有日志输出将停止（包括文件日志和 Logcat 输出）</string>
+    <string name="settings_log_hint">关闭后立即停止所有日志输出（文件日志与 Logcat）；设置会保存，重启应用 / 输入法服务后依然生效</string>
+    <string name="settings_log_path">日志文件：%1$s</string>
+    <string name="settings_log_on">日志输出已开启</string>
+    <string name="settings_log_off">日志输出已关闭</string>
+
+    <string name="about_title">关于</string>
+    <string name="about_version_line">v%1$s (build %2$d)</string>
+    <string name="about_label_build_type">构建类型</string>
+    <string name="about_label_build_time">构建时间</string>
+    <string name="about_label_git_commit">Git 提交</string>
+    <string name="about_label_package">包名</string>
+    <string name="about_label_env">运行环境</string>
+    <string name="about_label_log_file">日志文件</string>
+    <string name="about_value_unknown">未知</string>
 </resources>

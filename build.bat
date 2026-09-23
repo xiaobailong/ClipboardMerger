@@ -10,7 +10,8 @@ set "_CM_LOG_ACTIVE=1"
 if not exist "build\logs" mkdir "build\logs"
 for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"') do set "_CM_LOG_TS=%%i"
 set "_CM_LOGFILE=build\logs\build_%_CM_LOG_TS%.log"
-echo [%_CM_LOG_TS%] ClipboardMerger Build Start > "%_CM_LOGFILE%"
+REM 日志保存为 UTF-8（通过 PowerShell 写入 BOM）
+powershell -NoProfile -Command "[System.IO.File]::WriteAllText('%_CM_LOGFILE%', '[%_CM_LOG_TS%] ClipboardMerger Build Start', [System.Text.UTF8Encoding]::new($true))"
 echo 正在构建，日志文件: %_CM_LOGFILE%
 call "%~f0" %* 1>> "%_CM_LOGFILE%" 2>&1
 set _CM_BUILD_RESULT=%ERRORLEVEL%
@@ -39,6 +40,8 @@ set "ANDROID_HOME=D:\Tools\DevTools\Android\Sdk"
 set "ANDROID_SDK_ROOT=D:\Tools\DevTools\Android\Sdk"
 set "PATH=D:\Tools\DevTools\Java\JDK\jdk-21.0.10-oracle\bin;D:\Tools\DevTools\gradle\gradle-8.5\bin;%PATH%"
 set "GH_EXE=C:\Program Files\GitHub CLI\gh.exe"
+set "GH_REPO=xiaobailong/ClipboardMerger"
+set "JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8"
 
 cd /d d:\WorkSpace\test\ClipboardMerger 2>nul || (
     echo [错误] 项目目录不存在
@@ -86,6 +89,8 @@ call "D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" clean --no-daemon --co
 rmdir /s /q ".gradle" 2>nul
 if exist "*.apk" del /q "*.apk" 2>nul
 if exist "*.aab" del /q "*.aab" 2>nul
+REM Cline 临时目录：整目录删除（约定见 .clinerules/tmp-files.md）
+rmdir /s /q "tmp" 2>nul
 echo.
 echo [完成] 清理完成。
 call :countdown
@@ -131,10 +136,16 @@ echo ============================================
 echo  构建成功！
 echo ============================================
 if exist "*.apk" del /q "*.apk" 2>nul
+set "APK_PATH="
 for /f "delims=" %%f in ('dir /s /b build\outputs\apk\debug\*.apk 2^>nul') do (
     copy /y "%%f" "." > nul
     set "APK_PATH=%%f"
-    echo  APK: %%~nxf  (%%~zf bytes)
+    echo  APK: %%~nxf  ^(%%~zf bytes^)
+)
+if "%APK_PATH%"=="" (
+    echo [错误] 未找到 APK 文件！
+    call :countdown
+    exit /b 1
 )
 echo.
 echo  APK 已复制到项目根目录。
@@ -142,15 +153,12 @@ echo.
 
 echo [4/5] 发布到 GitHub Release...
 echo.
-echo       检查gh CLI...
-if not exist "%GH_EXE%" (
-    echo [错误] GitHub CLI ^(gh^) 未安装！
-    echo        路径: %GH_EXE%
-    echo        安装: winget install --id GitHub.cli
+echo       检查 gh CLI...
+call :check_gh
+if errorlevel 1 (
     call :countdown
     exit /b 1
 )
-for /f "usebackq tokens=3" %%i in (`"%GH_EXE%" --version 2^>nul ^| findstr /r "^gh version"`) do echo       gh版本: %%i
 
 echo       读取版本信息...
 for /f "tokens=2 delims==" %%i in ('findstr "versionName=" version.properties') do set "V_NAME=%%i"
@@ -173,21 +181,22 @@ if errorlevel 1 (
     )
 
     echo       创建标签 %TAG%...
-    call git tag -a "%TAG%" -m "Release %TAG% - build %V_CODE%"
+    call git tag -f -a "%TAG%" -m "Release %TAG% - build %V_CODE%"
     call git push origin "%TAG%"
     if errorlevel 1 (
-        echo [错误] tag push 失败！
-        call :countdown
-        exit /b 1
+        echo       [警告] 普通推送标签失败，改用强制推送...
+        call git push origin "%TAG%" -f
+        if errorlevel 1 (
+            echo [错误] tag push 失败！
+            call :countdown
+            exit /b 1
+        )
     )
 
-    echo       创建GitHub Release并上传APK...
-    call "%GH_EXE%" release create "%TAG%" "%APK_PATH%" ^
-        --title "%TAG%" ^
-        --notes "ClipboardMerger %TAG% (build %V_CODE%)" ^
-        --repo xiaobailong/ClipboardMerger
+    echo       创建 GitHub Release 并上传 APK...
+    call :gh_release
     if errorlevel 1 (
-        echo [错误] GitHub Release创建失败！
+        echo [错误] GitHub Release 发布失败！
         call :countdown
         exit /b 1
     )
@@ -215,13 +224,12 @@ if errorlevel 1 (
         exit /b 1
     )
 
-    echo       创建GitHub Release并上传APK...
-    call "%GH_EXE%" release create "%TAG%" "%APK_PATH%" ^
-        --title "%TAG%" ^
-        --notes "ClipboardMerger %TAG% (build %V_CODE%)" ^
-        --repo xiaobailong/ClipboardMerger
+    echo       创建/更新 GitHub Release 并上传 APK...
+    call :gh_release
     if errorlevel 1 (
-        echo [警告] Release创建失败(可能已存在)，请手动检查
+        echo [错误] GitHub Release 发布失败！
+        call :countdown
+        exit /b 1
     )
 )
 
@@ -245,14 +253,11 @@ echo ============================================
 echo.
 
 echo [1/6] 检查gh CLI...
-if not exist "%GH_EXE%" (
-    echo [错误] GitHub CLI ^(gh^) 未安装！
-    echo        路径: %GH_EXE%
-    echo        安装: winget install --id GitHub.cli
+call :check_gh
+if errorlevel 1 (
     pause
     exit /b 1
 )
-for /f "usebackq tokens=3" %%i in (`"%GH_EXE%" --version 2^>nul ^| findstr /r "^gh version"`) do echo       gh版本: %%i
 
 echo [2/6] 检查git状态...
 call git diff --quiet
@@ -316,21 +321,22 @@ if errorlevel 1 (
     )
 
     echo       创建标签 %TAG%...
-    call git tag -a "%TAG%" -m "Release %TAG% - build %V_CODE%"
+    call git tag -f -a "%TAG%" -m "Release %TAG% - build %V_CODE%"
     call git push origin "%TAG%"
     if errorlevel 1 (
-        echo [错误] tag push 失败！
-        pause
-        exit /b 1
+        echo       [警告] 普通推送标签失败，改用强制推送...
+        call git push origin "%TAG%" -f
+        if errorlevel 1 (
+            echo [错误] tag push 失败！
+            pause
+            exit /b 1
+        )
     )
 
-    echo       创建GitHub Release并上传APK...
-    call "%GH_EXE%" release create "%TAG%" "%APK_PATH%" ^
-        --title "%TAG%" ^
-        --notes "ClipboardMerger %TAG% (build %V_CODE%)" ^
-        --repo xiaobailong/ClipboardMerger
+    echo       创建 GitHub Release 并上传 APK...
+    call :gh_release
     if errorlevel 1 (
-        echo [错误] GitHub Release创建失败！
+        echo [错误] GitHub Release 发布失败！
         pause
         exit /b 1
     )
@@ -358,13 +364,12 @@ if errorlevel 1 (
         exit /b 1
     )
 
-    echo       创建GitHub Release并上传APK...
-    call "%GH_EXE%" release create "%TAG%" "%APK_PATH%" ^
-        --title "%TAG%" ^
-        --notes "ClipboardMerger %TAG% (build %V_CODE%)" ^
-        --repo xiaobailong/ClipboardMerger
+    echo       创建/更新 GitHub Release 并上传 APK...
+    call :gh_release
     if errorlevel 1 (
-        echo [警告] Release创建失败(可能已存在)，请手动检查
+        echo [错误] GitHub Release 发布失败！
+        pause
+        exit /b 1
     )
 )
 
@@ -376,6 +381,65 @@ echo  APK:  %APK_PATH%
 echo  GitHub Release已创建并上传APK
 echo ============================================
 call :countdown
+exit /b 0
+
+REM ============================================
+REM  检查 gh CLI（子过程，失败 exit /b 1）
+REM ============================================
+:check_gh
+if not exist "%GH_EXE%" (
+    echo [错误] GitHub CLI ^(gh^) 未安装！
+    echo        路径: %GH_EXE%
+    echo        安装: winget install --id GitHub.cli
+    exit /b 1
+)
+"%GH_EXE%" --version
+if errorlevel 1 (
+    echo [错误] gh 命令无法执行，请检查安装！
+    exit /b 1
+)
+"%GH_EXE%" auth status >nul 2>&1
+if errorlevel 1 (
+    echo       [警告] gh 未登录或登录状态异常，请运行: gh auth status
+)
+exit /b 0
+
+REM ============================================
+REM  创建 / 覆盖 GitHub Release 并上传 APK（子过程，可重复执行）
+REM  依赖: %GH_EXE% %GH_REPO% %TAG% %V_CODE% %APK_PATH%
+REM  说明: Release 已存在时改为更新说明 + 覆盖上传，避免重复构建时报 "already exists"
+REM ============================================
+:gh_release
+if "%APK_PATH%"=="" (
+    echo [错误] APK 路径为空，无法上传 Release！
+    exit /b 1
+)
+if not exist "%APK_PATH%" (
+    echo [错误] APK 不存在: %APK_PATH%
+    exit /b 1
+)
+"%GH_EXE%" release view "%TAG%" --repo "%GH_REPO%" >nul 2>&1
+if errorlevel 1 (
+    echo       创建 Release %TAG% 并上传 APK...
+    "%GH_EXE%" release create "%TAG%" "%APK_PATH%" ^
+        --title "%TAG%" ^
+        --notes "ClipboardMerger %TAG% (build %V_CODE%)" ^
+        --repo "%GH_REPO%"
+) else (
+    echo       Release %TAG% 已存在，更新说明并覆盖上传 APK...
+    "%GH_EXE%" release edit "%TAG%" ^
+        --title "%TAG%" ^
+        --notes "ClipboardMerger %TAG% (build %V_CODE%)" ^
+        --repo "%GH_REPO%" >nul 2>&1
+    "%GH_EXE%" release upload "%TAG%" "%APK_PATH%" --clobber --repo "%GH_REPO%"
+)
+if errorlevel 1 (
+    echo [错误] gh 返回失败，请检查: gh auth status / 网络 / 标签 %TAG% 是否已存在
+    exit /b 1
+)
+echo       Release 链接:
+"%GH_EXE%" release view "%TAG%" --repo "%GH_REPO%" --json url --template "{{.url}}"
+echo.
 exit /b 0
 
 REM ============================================

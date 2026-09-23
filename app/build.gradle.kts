@@ -1,3 +1,6 @@
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.Properties
 
 plugins {
@@ -13,6 +16,20 @@ if (versionFile.exists()) {
 val vCode = (versionProps.getProperty("versionCode") ?: "1").toInt()
 val vName = versionProps.getProperty("versionName") ?: "1.0"
 
+// 构建信息（写进 BuildConfig，供“关于”弹框展示）
+val buildTime = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+val gitCommit = try {
+    val process = ProcessBuilder("git", "rev-parse", "--short", "HEAD")
+        .directory(rootProject.projectDir)
+        .redirectErrorStream(true)
+        .start()
+    val out = process.inputStream.bufferedReader().use { it.readText() }.trim()
+    process.waitFor()
+    out.ifBlank { "unknown" }
+} catch (e: Exception) {
+    "unknown"
+}
+
 android {
     namespace = "com.example.clipboardmerger"
     compileSdk = 34
@@ -23,6 +40,9 @@ android {
         targetSdk = 34
         versionCode = vCode
         versionName = vName
+
+        buildConfigField("String", "BUILD_TIME", "\"$buildTime\"")
+        buildConfigField("String", "GIT_COMMIT", "\"$gitCommit\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -45,6 +65,7 @@ android {
     }
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
 
     applicationVariants.all {

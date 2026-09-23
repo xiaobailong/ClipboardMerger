@@ -24,14 +24,14 @@ echo  ClipboardMerger 清理构建产物
 echo ============================================
 echo.
 
-echo [1/4] Gradle clean...
+echo [1/5] Gradle clean...
 call "D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" clean --no-daemon --console=plain 2>nul
 if %ERRORLEVEL% neq 0 (
     echo [警告] gradle clean 未完全成功，继续手动清理...
 )
 echo       完成。
 
-echo [2/4] 清理 Gradle 缓存 (.gradle)...
+echo [2/5] 清理 Gradle 缓存 (.gradle)...
 if exist ".gradle" (
     rmdir /s /q ".gradle" 2>nul
     echo       已删除 .gradle 目录。
@@ -39,7 +39,7 @@ if exist ".gradle" (
     echo       .gradle 目录不存在，跳过。
 )
 
-echo [3/4] 清理 build 目录...
+echo [3/5] 清理 build 目录...
 if exist "build" (
     rmdir /s /q "build" 2>nul
     echo       已删除 build 目录。
@@ -53,7 +53,7 @@ if exist "app\build" (
     echo       app\build 目录不存在，跳过。
 )
 
-echo [4/4] 清理输出产物...
+echo [4/5] 清理输出产物...
 if exist "*.apk" (
     del /q "*.apk" 2>nul
     echo       已删除 apk 文件。
@@ -65,6 +65,14 @@ if exist "*.aab" (
     echo       已删除 aab 文件。
 ) else (
     echo       无 aab 文件，跳过。
+)
+
+echo [5/5] 清理 Cline 临时目录 tmp...
+if exist "tmp" (
+    rmdir /s /q "tmp" 2>nul
+    echo       已删除 tmp 目录。
+) else (
+    echo       tmp 目录不存在，跳过。
 )
 
 echo.

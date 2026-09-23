@@ -21,6 +21,7 @@ import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.SwitchCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
@@ -37,11 +38,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
 class MainActivity : AppCompatActivity() {
-
-    companion object {
-        private const val PREFS_NAME = "clipboard_merger_settings"
-        private const val KEY_LOG_ENABLED = "log_enabled"
-    }
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var viewModel: ClipboardViewModel
@@ -93,7 +89,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        loadLogSetting()
+        // 日志开关由 Logger 自己从 SharedPreferences 恢复，Activity / Service / 输入法服务启动顺序不影响开关状态
         Logger.init(this)
         Logger.d("========== onCreate ==========")
         Logger.d("SDK_INT=${Build.VERSION.SDK_INT}, MANUFACTURER=${Build.MANUFACTURER}, MODEL=${Build.MODEL}")
@@ -563,36 +559,86 @@ class MainActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.action_settings -> {
-                showSettingsDialog()
+                showOverflowMenu()
                 true
             }
             else -> super.onOptionsItemSelected(item)
         }
     }
 
-    private fun loadLogSetting() {
-        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-        val logEnabled = prefs.getBoolean(KEY_LOG_ENABLED, true)
-        Logger.setEnabled(logEnabled)
+    /** 工具栏“三个点”按钮：点击弹出下拉菜单（日志 / 关于） */
+    private fun showOverflowMenu() {
+        Logger.d("Overflow menu: more button clicked")
+        val anchor = binding.toolbar.findViewById<View>(R.id.action_settings) ?: binding.toolbar
+        val popup = PopupMenu(this, anchor)
+        popup.menuInflater.inflate(R.menu.settings_menu, popup.menu)
+        popup.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                R.id.action_log_settings -> {
+                    showLogSettingsDialog()
+                    true
+                }
+                R.id.action_about -> {
+                    showAboutDialog()
+                    true
+                }
+                else -> false
+            }
+        }
+        popup.show()
     }
 
-    private fun showSettingsDialog() {
+    private fun showLogSettingsDialog() {
+        Logger.d("Log settings dialog: opened")
         val dialogView = layoutInflater.inflate(R.layout.dialog_settings, null)
         val switchLogOutput = dialogView.findViewById<SwitchCompat>(R.id.switchLogOutput)
+        val tvLogPath = dialogView.findViewById<TextView>(R.id.tvLogPath)
+
         switchLogOutput.isChecked = Logger.isEnabled()
+        tvLogPath.text = getString(R.string.settings_log_path, Logger.getLogPath())
+
+        // 拨动即生效并持久化：不依赖“确定”按钮，进程重启后依然是这个值
+        switchLogOutput.setOnCheckedChangeListener { _, isChecked ->
+            Logger.setEnabled(this, isChecked)
+            Logger.d("Log settings dialog: log output changed to $isChecked")
+            Toast.makeText(
+                this,
+                if (isChecked) R.string.settings_log_on else R.string.settings_log_off,
+                Toast.LENGTH_SHORT
+            ).show()
+        }
 
         AlertDialog.Builder(this)
-            .setTitle(R.string.settings_title)
+            .setTitle(R.string.settings_log_title)
             .setView(dialogView)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                val enabled = switchLogOutput.isChecked
-                Logger.setEnabled(enabled)
-                getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                    .edit()
-                    .putBoolean(KEY_LOG_ENABLED, enabled)
-                    .apply()
-            }
-            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    private fun showAboutDialog() {
+        Logger.d("About dialog: opened")
+        val dialogView = layoutInflater.inflate(R.layout.dialog_about, null)
+        val unknown = getString(R.string.about_value_unknown)
+
+        dialogView.findViewById<TextView>(R.id.tvAboutVersion).text = getString(
+            R.string.about_version_line,
+            BuildConfig.VERSION_NAME,
+            BuildConfig.VERSION_CODE
+        )
+        dialogView.findViewById<TextView>(R.id.tvAboutBuildType).text = BuildConfig.BUILD_TYPE
+        dialogView.findViewById<TextView>(R.id.tvAboutBuildTime).text =
+            BuildConfig.BUILD_TIME.ifBlank { unknown }
+        dialogView.findViewById<TextView>(R.id.tvAboutGitCommit).text =
+            BuildConfig.GIT_COMMIT.ifBlank { unknown }
+        dialogView.findViewById<TextView>(R.id.tvAboutPackage).text = packageName
+        dialogView.findViewById<TextView>(R.id.tvAboutEnv).text =
+            "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}) · ${Build.MANUFACTURER} ${Build.MODEL}"
+        dialogView.findViewById<TextView>(R.id.tvAboutLogFile).text = Logger.getLogPath()
+
+        AlertDialog.Builder(this)
+            .setTitle(R.string.about_title)
+            .setView(dialogView)
+            .setPositiveButton(android.R.string.ok, null)
             .show()
     }
 }
