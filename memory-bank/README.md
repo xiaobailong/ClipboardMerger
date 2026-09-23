@@ -10,10 +10,10 @@
 | --- | --- | --- |
 | 构建日志空 / 缺内容 / 路径为空 | `ISSUE-001`（archive） | I |
 | 构建失败也消耗一个 `versionCode`（跳号） | `ISSUE-002` | I |
-| 改 `build.bat` 的日志 / 发布 / 版本流程 | `ISSUE-001` 判据、`ADR-003` / `ADR-005` | I + D |
-| 校验不 push；`build.bat` 会不会自动 push；`gh` / Release 失败 | `ADR-004` / `ADR-006` / `ADR-009` | D |
+| 改 `build.bat` 的日志 / 发布 / 版本流程 | `ISSUE-001` 判据、`ADR-005` / `ADR-010` | I + D |
+| 校验不 push / 推送瞬断失败 / `gh` / Release 出问题 | `ADR-004` / `ADR-006` / `ADR-009`、`ISSUE-005` | D + I |
 | 临时文件放哪、怎么清；仓库根堆临时产物 | `ADR-002` | D |
-| 知识库为什么按需读、`.clineignore` / 会话压缩怎么用 | `ADR-001`、`ADR-007`（已归档） | D |
+| 知识库为什么按需读、`.clineignore` / 会话压缩怎么用 | `ADR-001`（已归档）、`ADR-007`（已归档） | D |
 | `powershell -Command` 无输出、退出码 786 | `PIT-001` | P |
 | `.ps1` 乱码 / 语法错；`.bat` 首行 `@echo off` 失效 | `PIT-002` | P |
 | 批量替换把文件改坏（字符被换 / 路径重复） | `PIT-003`、`PIT-004`、`PIT-014` | P |
@@ -22,7 +22,7 @@
 | 日志中文乱码 / PowerShell 查询挂死 / 搜不到东西 | `PIT-010`、`PIT-011`、`PIT-017` | P |
 | 管道 + PowerShell 写日志丢内容；`call` 递归退出码不对 | `PIT-012`、`PIT-013` | P |
 | 产物放 `build\` 被清 / 日志看不到最新 / 窗口没关又起一轮 / 日志缺一段 | `PIT-015`、`PIT-016`、`PIT-020`、`PIT-021` | P |
-| 日志开关关了还有日志输出（重启复发） | `ISSUE-003` | I |
+| 日志开关关了还有输出 / 仍建 Download\ClipboardMerger 目录 | `ISSUE-003` | I |
 | 构建走到“提交版本变更”就停（不 commit/tag/release） | `ISSUE-004` | I |
 | `build.gradle.kts` 报 `Unresolved reference: text / util` | `PIT-022` | P |
 | `'C:\Program' is not recognized`；一行 `if/else` 后接 `& 命令` 不执行 | `PIT-023`、`PIT-024` | P |

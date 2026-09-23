@@ -16,6 +16,7 @@ object Logger {
     const val KEY_LOG_ENABLED = "log_enabled"
 
     private const val TAG = "ClipboardMerger"
+    private const val LOG_DIR_NAME = "ClipboardMerger"
     private const val LOG_FILE_PREFIX = "clipboard_merger_log"
     private const val LOG_RETENTION_DAYS = 7L
     private val timestampFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
@@ -44,8 +45,15 @@ object Logger {
         sb.append("=== ClipboardMerger v${getVersionName(appCtx)} ===\n")
         sb.append("=== SDK: $sdk | Device: $model ===\n")
 
-        val result = trySetupLog()
-        sb.append("=== Log: $result ===\n")
+        // 关闭状态下不碰 Download 目录：既不建目录，也不建/写日志文件（只算出“将会写到哪里”给设置页展示）
+        if (enabled) {
+            val result = trySetupLog()
+            sb.append("=== Log: $result ===\n")
+        } else {
+            logFile = null
+            logFilePath = expectedLogPath()
+            sb.append("=== Log: disabled, not created ($logFilePath) ===\n")
+        }
 
         sb.append("=== Log started ===\n")
         sb.append("=== Log enabled: $enabled ===\n")
@@ -67,18 +75,29 @@ object Logger {
     private fun trySetupLog(): String {
         return try {
             val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            val logDir = File(downloadsDir, "ClipboardMerger")
+            val logDir = File(downloadsDir, LOG_DIR_NAME)
             if (!logDir.exists()) logDir.mkdirs()
 
             cleanOldLogs(logDir)
 
-            val today = dateFormat.format(Date())
-            val file = File(logDir, "${LOG_FILE_PREFIX}_${today}.txt")
+            val file = File(logDir, todayLogFileName())
             logFile = file
             logFilePath = file.absolutePath
             "OK: $logFilePath"
         } catch (e: Exception) {
             "FAILED: ${e.message}"
+        }
+    }
+
+    private fun todayLogFileName(): String = "${LOG_FILE_PREFIX}_${dateFormat.format(Date())}.txt"
+
+    /** 只算路径，不创建任何目录（开关关闭时用来展示“将会写到哪里”） */
+    private fun expectedLogPath(): String {
+        return try {
+            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            File(File(downloadsDir, LOG_DIR_NAME), todayLogFileName()).absolutePath
+        } catch (e: Exception) {
+            "N/A"
         }
     }
 
@@ -182,6 +201,9 @@ object Logger {
     }
 
     fun getLogPath(): String = logFilePath
+
+    /** 日志文件是否真的已创建 / 正在写（开关关闭时为 false） */
+    fun isLogFileActive(): Boolean = logFile != null
 
     private fun getVersionName(context: android.content.Context): String {
         return try {

@@ -12,7 +12,8 @@
 - 未明确要求时不新建文档、不写长报告；收尾只讲：改了什么、怎么验证的、`tmp\` 是否已清空。
 
 ## 3. 目录结构
-- 构建：`build.bat`（默认含 git 提交/推送/打 tag/`gh release create`）、`build.bat release|setup|clean`、`clean.bat`。
+- 构建：`build.bat`（默认含 git 提交/推送/打 tag/`gh release create`）、`build.bat release|setup|clean`、`clean.bat`；
+  日志 tee 包装器 `tools\tee-log.ps1`（逐行：先写文件 → 再回显控制台）。
 - 日志 `build\logs\build_<ts>.log`；APK `build\outputs\apk\debug\` + 仓库根副本；版本号真源 `version.properties`。
 - 代码 `app\src\main\java\com\example\clipboardmerger\`；知识库 `memory-bank\`；临时文件 `tmp\`（gitignored）。
 

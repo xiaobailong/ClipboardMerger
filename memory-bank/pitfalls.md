@@ -70,6 +70,7 @@
 ## PIT-012 别用「管道 + PowerShell 逐行追写」给构建做日志 — 已归档（2026-09-23）
 - 要点: 用 `call "%~f0" %* 1>> "%_CM_LOGFILE%" 2>&1` + 紧邻 `set _CM_BUILD_RESULT=%ERRORLEVEL%`；
   自检: 日志首行与末尾"日志已保存"都在。详情: `archive/pitfalls-archive.md`
+- 补充 2026-09-23: 该"重定向 + 结束后 `type`"方案已废弃（控制台全程空白）→ 改 `tools\tee-log.ps1` 逐行 tee（`ADR-010`）。
 
 ## PIT-013 `call` 递归调用自身后，必须**立刻** `set "RC=%ERRORLEVEL%"`
 - 现象: 中间的 `echo` / `type` / `timeout` 会改写 `ERRORLEVEL` ⇒ 外层永远拿到成功码 ⇒ **失败却报成功**。
@@ -97,10 +98,8 @@
 - 反例: 发一条 `ping -n 600` 指望等 10 分钟；把 `&` 后面的命令当作一定执行。
 - 自检: 状态文件 mtime 是否推进；`java.exe` 是否还在。
 
-## PIT-019 临时产物散落在仓库根 ⇒ `git status` 噪声
-- 正确做法: 中间文件一律 `tmp\`（`mkdir tmp 2>nul`）；收尾 `rmdir /s /q tmp`（或 `clean.bat` / `build.bat clean`）。
-- 反例: 把 `> out.txt`、临时 ps1 写在仓库根"用完删"（常忘删；重名还覆盖上次证据）。
-- 自检: `git status --porcelain` 除真实改动外**不应有 `??`**。
+## PIT-019 临时产物散落在仓库根 ⇒ `git status` 噪声 — 已归档（2026-09-23）
+- 要点: 中间文件一律 `tmp\`，收尾 `rmdir /s /q tmp`；自检 `git status --porcelain` 除真实改动外不应有 `??`。详情: `archive/pitfalls-archive.md`
 
 ## PIT-020 上一轮构建窗口还停在 `pause` / `timeout 60` 时启动第二轮 ⇒ 并发构建
 - 现象: 两个构建抢 `.gradle`/`build`，`versionCode` 连跳，根目录被拷进旧 APK，日志分散难辨认。
@@ -131,7 +130,7 @@
 - 反例: `for /f %%i in ('cmd /c ""%EXE%" --version"') do ...`　自检: 日志里不出现 `is not recognized`。
 
 ## PIT-024 同一行 `if ... ( ) else ( )` 之后接 `& 命令` ⇒ 后面的命令根本不执行
-- 触发条件: 把 `cmd > out 2>&1 & if errorlevel 1 (echo A >> out) else (echo B >> out) & 下一条 > out2` 挤在一行。
+- 触发条件: 把 `cmd > out 2>&1 & if errorlevel 1 (echo A) else (echo B) & 下一条 > out2` 挤在一行。
 - 现象: `out` 写对了，`out2` **文件都不存在**（不是内容错，是压根没跑）。
 - 正确做法: `if/else` 单独占行（或用 `goto` 分流）；一行里只留无分支的 `&` 链。
 - 自检: 链上每个产物文件是否都生成；缺一个就拆行（别据此以为"命令失败了"）。

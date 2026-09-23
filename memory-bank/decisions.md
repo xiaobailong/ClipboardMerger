@@ -3,23 +3,9 @@
 > 上限 12KB（超了照 `WRITING.md` §3 归档；已废弃的移入 `archive/decisions-archive.md`）。
 > 每条：背景 / 决策 / 理由 / 备选与为何不选 / 影响。编号只增不改。模板见 `WRITING.md` §1。
 
-## ADR-001 知识库制度：`memory-bank` 按需读取 + 体积阈值 + 归档（控 token）
-- 日期: 2026-09-23 | 状态: 已采纳
-- 背景: 同一个坑（WMI 挂死、`-Command` 786、批处理变量展开、日志写不进文件…）在不同会话被反复重查；
-  但"每次把知识库整篇读完"又会白烧上下文，挤压留给代码/任务的窗口。
-- 决策: ①知识库拆成"**数据（按需读）** + **规则（常驻）**"：索引 `memory-bank/README.md`（≈1.5KB，开工只读这个）、
-  条目 `issues-solved.md`(I) / `pitfalls.md`(P) / `decisions.md`(D)、写法 `memory-bank/WRITING.md`（模板 / 归档 / 阈值，**只在要写条目时读**）、
-  归档 `archive/`（默认不读）；规则本体在 `.clinerules/memory-bank.md`（常驻，已付过费）（2026-09-23 第二轮优化：原先把协议/模板塞在索引里，等于每次会话重复付费）；
-  ②读取按需：**只读索引 → 只读命中的那 1 个文件 → `archive/` 默认不读**；
-  ③主文件设上限（索引 2.5KB、`I`/`P`/`D` 各 12KB），超了先归档再写新条目。
-- 理由: 一条"结论 + 复发判据"只占几行，却能把几十分钟的排查压成一条命令；
-  按需读 + 归档 + 规则常驻后，每次会话约 `.clinerules` 1.6k tok + 索引 0.45k tok + 命中的那 1 个文件（0.9~3.3k tok）。
-- 备选与为何不选: 写进 `README.md`（污染产品文档）；只靠 commit message（不可检索、无判据）；
-  外部 wiki（离线/跨机不便）；无脑 read all（正是要避免的 token 浪费）。
-- 影响 / 约束: 每个任务结束必须回填条目 + 更新索引；条目只写结论与判据，长推导进 `archive/` / `docs\`；
-  不许删条目、不许改编号；条目禁止写 token / 凭据。
-  落地自检（临时脚本放 `tmp\`，用完即删）：统计各文件 bytes / ~tok 是否超阈值 + 校验 `enc=noBOM CRLF` +
-  交叉引用（引用的 `ISSUE/PIT/ADR` 编号是否都存在，防悬空指针）。
+## ADR-001 知识库制度：`memory-bank` 按需读取 + 体积阈值 + 归档（控 token） — 已归档（2026-09-23）
+- 要点: 只读索引 → 只读命中的那 1 个文件 → 主文件超限先归档；规则常驻 `.clinerules`、写条目看 `WRITING.md`；收尾清 `tmp\`；
+  自检 bytes/编码/交叉引用无悬空。详情: `archive/decisions-archive.md`
 
 ## ADR-002 Cline 临时产物一律写进仓库根 `tmp\`
 - 日期: 2026-09-23 | 状态: 已采纳
@@ -31,15 +17,10 @@
 - 影响 / 约束: 例外只有四类（`build\logs\`、`memory-bank\`、`docs\HANDOFF-*.md`、长期脚本）；
   收尾回复要说明 `tmp\` 是否已清空。
 
-## ADR-003 构建日志用「`call` 递归 + 文件重定向」，放弃「管道 + PowerShell 追写」
-- 日期: 2026-09-22（`d21ff87` → `f9bc43c` → `bccd4ca`）| 状态: 已采纳
-- 决策: `build.bat` 顶部用 `goto :init_log` / `:skip_log`（不用括号块）→ 日志
-  `build\logs\build_<yyyyMMdd_HHmmss>.log`（首行由 PowerShell 写 UTF-8 BOM）→
-  `call "%~f0" %* 1>> "%_CM_LOGFILE%" 2>&1` + 紧邻 `set _CM_BUILD_RESULT=%ERRORLEVEL%` → `type` 回显。
-- 理由: 重定向由 cmd 内核完成，不受 `-Command` 长度与解析期展开影响；`call` 不额外起进程、退出码可控。
-- 备选与为何不选: 管道 + PowerShell `tee`（实测丢内容，`PIT-012`）；`_logpath.tmp` 传路径（多一个残留文件）；
-  整体重写为 PowerShell 构建脚本（改动面太大）。
-- 影响 / 约束: 改这段必须跑 `ISSUE-001` 的复发判据；`_CM_LOG_ACTIVE` 是父子进程判别关键，别改名。
+## ADR-003 构建日志用「`call` 递归 + 文件重定向」 — 已废弃（2026-09-23，被 `ADR-010` 取代）
+- 要点: 当年为避开「管道 + PowerShell 追写」丢内容（`PIT-012`）改用重定向 + 结束后 `type` 回显；
+  代价是控制台要等构建跑完才刷（`ADR-010` 已换成 tee 包装器）。`_CM_LOG_ACTIVE` 递归判别仍有效。
+  详情: `archive/decisions-archive.md`
 
 ## ADR-004 自测不触碰发布：校验用 Gradle 直跑，发布才用 `build.bat`
 - 日期: 2026-09-23 | 状态: 已采纳
@@ -114,3 +95,20 @@
   引入第三方发布插件（新增依赖与凭据配置）。
 - 影响 / 约束: 改 gh 行为只改这两个子过程，改完必须跑 `ISSUE-004` 的复发判据 + 抽段测试（禁跑 `build.bat`，见 `ADR-004`）；
   `--clobber` 会先删同名资产再上传，上传失败原资产会丢（可接受）；子过程必须留在 `exit /b 0` 之后，别被主流程顺序执行到。
+- 追加（2026-09-23）: 所有推送统一走 `:git_push <ref> [force]`（3 次重试 + 3 秒间隔 + 失败指引，覆盖 main / tag / tag force，
+  见 `ISSUE-005`）；`git push` 只允许出现在这个子过程里，调用方只 `call :git_push`。
+
+## ADR-010 构建日志改「tee 包装器」：逐行先落盘、再回显（取代 ADR-003）
+- 日期: 2026-09-23 | 状态: 已采纳
+- 背景: `ADR-003` 的「重定向 + 结束后 `type`」让控制台**全程空白**，构建几十秒看不到进度/报错；需求 = 每条日志先写文件、再同步展示。
+- 决策: 新增 `tools\tee-log.ps1`（UTF-8 BOM + CRLF）：`StreamWriter(AutoFlush=true)` 逐行写日志 → `[Console]::Out.WriteLine` 逐行回显；
+  `build.bat :init_log` 改为 `powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\tee-log.ps1" -Log "%_CM_LOGFILE%"`；
+  被包装的 .bat 路径/参数经环境变量 `_CM_SELF` / `_CM_ARGS` 传入（避开 cmd 引号地狱），子进程用
+  `cmd /d /s /c ""<bat>" <args> 2>&1"` 只留一个输出流（顺序不乱）；日志仍 UTF-8 BOM；退出码经 PS `exit` 原样回传
+  （`set _CM_BUILD_RESULT=%ERRORLEVEL%` 不变）；保留 `_CM_LOG_ACTIVE` 递归判别；缺 `tools\tee-log.ps1` 时 `goto :log_legacy` 降级回老路径。
+- 理由: 与 `PIT-012` 的失败模式不同 —— 不再用管道喂 `-Command`（改 `-File` + env 传值），无 cmd 解析期展开问题；
+  逐行 `AutoFlush` + 单流读取 ⇒ 文件先、控制台后，顺序稳定。
+- 备选与为何不选: 回到「管道 + PowerShell 追写」（`PIT-012` 已证丢内容）；`Get-Content -Wait` 跟随日志（要并行 tail 进程，结束时机与退出码难把握）；
+  把 `build.bat` 整体改写成 PowerShell（改动面太大）。
+- 影响 / 约束: 改日志链路要同步更新 `ISSUE-001` 判据；`tools\` 随仓库入库、别删；控制台内容 = 日志文件内容（tee 之外只剩 build.bat 的两行提示）；
+  验证方式：跑 `tmp\` 里的假子脚本（禁跑 `build.bat`，见 `ADR-004`）—— 中途 `type` 已见行 + 控制台流一致 + 退出码回传。

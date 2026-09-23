@@ -10,15 +10,27 @@ set "_CM_LOG_ACTIVE=1"
 if not exist "build\logs" mkdir "build\logs"
 for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"') do set "_CM_LOG_TS=%%i"
 set "_CM_LOGFILE=build\logs\build_%_CM_LOG_TS%.log"
+set "_CM_TEE=%~dp0tools\tee-log.ps1"
+set "_CM_SELF=%~f0"
+set "_CM_ARGS=%*"
+echo 正在构建（日志实时双写：文件 + 控制台），日志文件: %_CM_LOGFILE%
+if not exist "%_CM_TEE%" goto :log_legacy
+REM 逐行 tee：tools\tee-log.ps1 读子进程输出，先写日志文件再回显控制台（见 ADR-010）
+powershell -NoProfile -ExecutionPolicy Bypass -File "%_CM_TEE%" -Log "%_CM_LOGFILE%"
+set _CM_BUILD_RESULT=%ERRORLEVEL%
+goto :log_done
+
+:log_legacy
+echo [警告] 缺少 tools\tee-log.ps1，退回“先写文件、结束再回显”模式
 REM 日志保存为 UTF-8（通过 PowerShell 写入 BOM）
 powershell -NoProfile -Command "[System.IO.File]::WriteAllText('%_CM_LOGFILE%', '[%_CM_LOG_TS%] ClipboardMerger Build Start', [System.Text.UTF8Encoding]::new($true))"
-echo 正在构建，日志文件: %_CM_LOGFILE%
 call "%~f0" %* 1>> "%_CM_LOGFILE%" 2>&1
 set _CM_BUILD_RESULT=%ERRORLEVEL%
-echo ============================================ >> "%_CM_LOGFILE%"
-echo 日志已保存: %_CM_LOGFILE%
-echo ----------------------------------------
 type "%_CM_LOGFILE%"
+
+:log_done
+echo ----------------------------------------
+echo 日志已保存: %_CM_LOGFILE%
 echo ----------------------------------------
 timeout /t 10 > nul
 exit /b %_CM_BUILD_RESULT%
@@ -173,7 +185,7 @@ if errorlevel 1 (
     call git commit -m "release: %TAG% (build %V_CODE%)"
 
     echo       推送代码...
-    call git push origin main
+    call :git_push main
     if errorlevel 1 (
         echo [错误] git push 失败！
         call :countdown
@@ -182,10 +194,10 @@ if errorlevel 1 (
 
     echo       创建标签 %TAG%...
     call git tag -f -a "%TAG%" -m "Release %TAG% - build %V_CODE%"
-    call git push origin "%TAG%"
+    call :git_push "%TAG%"
     if errorlevel 1 (
         echo       [警告] 普通推送标签失败，改用强制推送...
-        call git push origin "%TAG%" -f
+        call :git_push "%TAG%" force
         if errorlevel 1 (
             echo [错误] tag push 失败！
             call :countdown
@@ -205,7 +217,7 @@ if errorlevel 1 (
     call git diff origin/main..HEAD --quiet
     if errorlevel 1 (
         echo       有未推送的提交，正在推送...
-        call git push origin main
+        call :git_push main
         if errorlevel 1 (
             echo [错误] git push 失败！
             call :countdown
@@ -217,7 +229,7 @@ if errorlevel 1 (
 
     echo       创建/更新标签 %TAG%...
     call git tag -f -a "%TAG%" -m "Release %TAG% - build %V_CODE%" 2>nul
-    call git push origin "%TAG%" -f
+    call :git_push "%TAG%" force
     if errorlevel 1 (
         echo [错误] tag push 失败！
         call :countdown
@@ -313,7 +325,7 @@ if errorlevel 1 (
     call git commit -m "release: %TAG% (build %V_CODE%)"
 
     echo       推送代码...
-    call git push origin main
+    call :git_push main
     if errorlevel 1 (
         echo [错误] git push 失败！
         pause
@@ -322,10 +334,10 @@ if errorlevel 1 (
 
     echo       创建标签 %TAG%...
     call git tag -f -a "%TAG%" -m "Release %TAG% - build %V_CODE%"
-    call git push origin "%TAG%"
+    call :git_push "%TAG%"
     if errorlevel 1 (
         echo       [警告] 普通推送标签失败，改用强制推送...
-        call git push origin "%TAG%" -f
+        call :git_push "%TAG%" force
         if errorlevel 1 (
             echo [错误] tag push 失败！
             pause
@@ -345,7 +357,7 @@ if errorlevel 1 (
     call git diff origin/main..HEAD --quiet
     if errorlevel 1 (
         echo       有未推送的提交，正在推送...
-        call git push origin main
+        call :git_push main
         if errorlevel 1 (
             echo [错误] git push 失败！
             pause
@@ -357,7 +369,7 @@ if errorlevel 1 (
 
     echo       创建/更新标签 %TAG%...
     call git tag -f -a "%TAG%" -m "Release %TAG% - build %V_CODE%" 2>nul
-    call git push origin "%TAG%" -f
+    call :git_push "%TAG%" force
     if errorlevel 1 (
         echo [错误] tag push 失败！
         pause
@@ -400,9 +412,40 @@ if errorlevel 1 (
 )
 "%GH_EXE%" auth status >nul 2>&1
 if errorlevel 1 (
-    echo       [警告] gh 未登录或登录状态异常，请运行: gh auth status
+    echo       [警告] gh 登录状态自检未通过（网络瞬断也会导致），详情如下:
+    echo       ----------------------------------------
+    "%GH_EXE%" auth status
+    echo       ----------------------------------------
+    echo       若提示 token 无效，请运行: gh auth login
 )
 exit /b 0
+
+REM ============================================
+REM  推送（子过程）：网络瞬断（Connection reset / timeout）自动重试 3 次
+REM  用法: call :git_push main ／ call :git_push "%TAG%" ／ call :git_push "%TAG%" force
+REM ============================================
+:git_push
+set "_CM_PUSH_REF=%~1"
+set "_CM_PUSH_FORCE="
+if /i "%~2"=="force" set "_CM_PUSH_FORCE=-f"
+set "_CM_PUSH_N=0"
+
+:git_push_try
+set /a _CM_PUSH_N+=1
+if %_CM_PUSH_N%==1 echo       推送 %_CM_PUSH_REF% ...
+if %_CM_PUSH_N% gtr 1 echo       [重试 %_CM_PUSH_N%/3] 推送 %_CM_PUSH_REF% ...
+call git push origin %_CM_PUSH_REF% %_CM_PUSH_FORCE%
+if not errorlevel 1 exit /b 0
+if %_CM_PUSH_N% lss 3 (
+    echo       [警告] 推送失败，3 秒后重试...
+    ping -n 4 127.0.0.1 > nul
+    goto :git_push_try
+)
+echo [错误] git push %_CM_PUSH_REF% 连续 3 次失败！
+echo        常见原因: 网络瞬断（Connection reset / timeout）、代理、22 端口被拦。
+echo        手工重试:            git push origin %_CM_PUSH_REF%
+echo        改走 HTTPS（一次性）: gh auth setup-git ^&^& git remote set-url origin https://github.com/%GH_REPO%.git
+exit /b 1
 
 REM ============================================
 REM  创建 / 覆盖 GitHub Release 并上传 APK（子过程，可重复执行）

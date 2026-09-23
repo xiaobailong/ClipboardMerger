@@ -4,6 +4,35 @@
 > 归档时保留「被 ADR-xxx 取代」关系；`decisions.md` 原位置改成
 > `## ADR-nnn <标题> — 已废弃（被 ADR-xxx 取代）：见 archive/decisions-archive.md`。
 
+## ADR-001 知识库制度：`memory-bank` 按需读取 + 体积阈值 + 归档（控 token）
+【归档 2026-09-23，超限移出（仍是已采纳状态），原文】
+- 日期: 2026-09-23 | 状态: 已采纳
+- 背景: 同一个坑（WMI 挂死、`-Command` 786、批处理变量展开、日志写不进文件…）在不同会话被反复重查；
+  但"每次把知识库整篇读完"又会白烧上下文，挤压留给代码/任务的窗口。
+- 决策: ①知识库拆成"**数据（按需读）** + **规则（常驻）**"：索引 `memory-bank/README.md`（≈1.5KB，开工只读这个）、
+  条目 `issues-solved.md`(I) / `pitfalls.md`(P) / `decisions.md`(D)、写法 `memory-bank/WRITING.md`（模板 / 归档 / 阈值，**只在要写条目时读**）、
+  归档 `archive/`（默认不读）；规则本体在 `.clinerules/memory-bank.md`（常驻，已付过费）（2026-09-23 第二轮优化：原先把协议/模板塞在索引里，等于每次会话重复付费）；
+  ②读取按需：**只读索引 → 只读命中的那 1 个文件 → `archive/` 默认不读**；
+  ③主文件设上限（索引 2.5KB、`I`/`P`/`D` 各 12KB），超了先归档再写新条目。
+- 理由: 一条"结论 + 复发判据"只占几行，却能把几十分钟的排查压成一条命令；
+  按需读 + 归档 + 规则常驻后，每次会话约 `.clinerules` 1.6k tok + 索引 0.45k tok + 命中的那 1 个文件（0.9~3.3k tok）。
+- 备选与为何不选: 写进 `README.md`（污染产品文档）；只靠 commit message（不可检索、无判据）；
+  外部 wiki（离线/跨机不便）；无脑 read all（正是要避免的 token 浪费）。
+- 影响 / 约束: 每个任务结束必须回填条目 + 更新索引；条目只写结论与判据，长推导进 `archive/` / `docs\`；
+  不许删条目、不许改编号；条目禁止写 token / 凭据。
+  落地自检（临时脚本放 `tmp\`，用完即删）：统计各文件 bytes / ~tok 是否超阈值 + 校验 `enc=noBOM CRLF` +
+  交叉引用（引用的 `ISSUE/PIT/ADR` 编号是否都存在，防悬空指针）。
+
+## ADR-003 构建日志用「`call` 递归 + 文件重定向」，放弃「管道 + PowerShell 追写」
+【归档 2026-09-23，已废弃（被 ADR-010 取代），原文】
+- 日期: 2026-09-22（`d21ff87` → `f9bc43c` → `bccd4ca`）| 状态: 已采纳
+- 决策: `build.bat` 顶部用 `goto :init_log` / `:skip_log`（不用括号块）→ 日志
+  `build\logs\build_<yyyyMMdd_HHmmss>.log`（首行由 PowerShell 写 UTF-8 BOM）→
+  `call "%~f0" %* 1>> "%_CM_LOGFILE%" 2>&1` + 紧邻 `set _CM_BUILD_RESULT=%ERRORLEVEL%` → `type` 回显。
+- 理由: 重定向由 cmd 内核完成，不受 `-Command` 长度与解析期展开影响；`call` 不额外起进程、退出码可控。
+- 备选与为何不选: 管道 + PowerShell `tee`（实测丢内容，`PIT-012`）；`_logpath.tmp` 传路径（多一个残留文件）；
+  整体重写为 PowerShell 构建脚本（改动面太大）。
+- 影响 / 约束: 改这段必须跑 `ISSUE-001` 的复发判据；`_CM_LOG_ACTIVE` 是父子进程判别关键，别改名。
 ## ADR-007 Token 策略：仓库侧（`.clineignore` + 精简 `.clinerules` + 检索式知识库）+ 客户端侧（Auto-Compact / `/smol` / `/newtask`）
 【归档 2026-09-23，超限移出（仍是已采纳状态），原文】
 - 日期: 2026-09-23 | 状态: 已采纳

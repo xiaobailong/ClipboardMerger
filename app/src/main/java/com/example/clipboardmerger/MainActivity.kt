@@ -595,11 +595,12 @@ class MainActivity : AppCompatActivity() {
         val tvLogPath = dialogView.findViewById<TextView>(R.id.tvLogPath)
 
         switchLogOutput.isChecked = Logger.isEnabled()
-        tvLogPath.text = getString(R.string.settings_log_path, Logger.getLogPath())
+        tvLogPath.text = logPathText()
 
         // 拨动即生效并持久化：不依赖“确定”按钮，进程重启后依然是这个值
         switchLogOutput.setOnCheckedChangeListener { _, isChecked ->
             Logger.setEnabled(this, isChecked)
+            tvLogPath.text = logPathText()
             Logger.d("Log settings dialog: log output changed to $isChecked")
             Toast.makeText(
                 this,
@@ -613,6 +614,13 @@ class MainActivity : AppCompatActivity() {
             .setView(dialogView)
             .setPositiveButton(android.R.string.ok, null)
             .show()
+    }
+
+    /** 日志文件路径文案：开关关闭（或文件尚未创建）时标注“当前未创建”——此时不会创建 Download 目录 */
+    private fun logPathText(): String {
+        val path = Logger.getLogPath()
+        val suffix = if (Logger.isLogFileActive()) "" else getString(R.string.log_file_not_created)
+        return getString(R.string.settings_log_path, path + suffix)
     }
 
     private fun showAboutDialog() {
@@ -633,7 +641,8 @@ class MainActivity : AppCompatActivity() {
         dialogView.findViewById<TextView>(R.id.tvAboutPackage).text = packageName
         dialogView.findViewById<TextView>(R.id.tvAboutEnv).text =
             "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}) · ${Build.MANUFACTURER} ${Build.MODEL}"
-        dialogView.findViewById<TextView>(R.id.tvAboutLogFile).text = Logger.getLogPath()
+        dialogView.findViewById<TextView>(R.id.tvAboutLogFile).text =
+            Logger.getLogPath() + if (Logger.isLogFileActive()) "" else getString(R.string.log_file_not_created)
 
         AlertDialog.Builder(this)
             .setTitle(R.string.about_title)

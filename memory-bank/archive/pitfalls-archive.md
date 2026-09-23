@@ -2,6 +2,12 @@
 
 > 由 `pitfalls.md` 归档的原文（按时间倒序追加）。归档时逐字搬，不改编号、不删「正确做法 / 反例」。
 
+## PIT-019 临时产物散落在仓库根 ⇒ `git status` 噪声
+【归档 2026-09-23，原文】
+- 正确做法: 中间文件一律 `tmp\`（`mkdir tmp 2>nul`）；收尾 `rmdir /s /q tmp`（或 `clean.bat` / `build.bat clean`）。
+- 反例: 把 `> out.txt`、临时 ps1 写在仓库根"用完删"（常忘删；重名还覆盖上次证据）。
+- 自检: `git status --porcelain` 除真实改动外**不应有 `??`**。
+
 ## PIT-017 检索手段实测：`search_codebase` 常超时、`findstr` 搜中文不可靠
 【归档 2026-09-23，原文】
 - 现象: `search_codebase` 多次 30s 超时；`findstr` 搜中文**假阴性**（确有该词却零命中），对 `\` `"` 也挑。

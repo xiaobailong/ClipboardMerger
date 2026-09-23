@@ -38,6 +38,7 @@
     <string name="settings_log_output">日志输出</string>
     <string name="settings_log_hint">关闭后立即停止所有日志输出（文件日志与 Logcat）；设置会保存，重启应用 / 输入法服务后依然生效</string>
     <string name="settings_log_path">日志文件：%1$s</string>
+    <string name="log_file_not_created">（当前未创建）</string>
     <string name="settings_log_on">日志输出已开启</string>
     <string name="settings_log_off">日志输出已关闭</string>
 
