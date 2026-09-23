@@ -89,7 +89,7 @@
 - 相关: `PIT-005`、`PIT-013`、`PIT-023`、`ADR-009`；首次记录: 2026-09-23 ／ 最近复核: 2026-09-23（抽段测试通过）
 
 ## ISSUE-005 `git push` 瞬断（`Connection reset … port 22`）导致发布中断，tag/Release 全没做
-- 状态: 已规避（2026-09-23，`build.bat` 加 `:git_push` 重试）
+- 状态: 已规避（2026-09-23，`build.bat` 加 `:git_push` 重试；`gh-release.bat` 再加「远端标签已在 HEAD 就跳过 tag 推送」快路径 + `GH_PROXY` 代理）
 - 症状 / 现场: 提交成功（`[main aaa7666] release: v1.52 (build 53)`）后 `Connection reset by 20.205.243.166 port 22`
   ⇒ `[错误] git push 失败！` ⇒ 退出，tag 与 Release 都没执行（本地多一个未推送提交）。同一轮 `检查 gh CLI` 还报过
   `[警告] gh 未登录或登录状态异常` —— 同样是网络瞬断（`gh auth status` 会联网校验 token）；事后复测 `gh auth status` 正常、
@@ -104,3 +104,25 @@
   ①失败 1 次后成功 ⇒ 重试生效、返回 0；②连续失败 ⇒ 3 次尝试（force 分支带 `-f`）后打印指引并返回 1。
 - 反例 / 易误判: 把 `gh 未登录` 当真（其实是联网自检失败）；把推送失败当脚本 bug（脚本只能重试，链路问题要换 HTTPS / 代理）。
 - 相关: `ADR-009`、`ISSUE-004`；首次记录: 2026-09-23 ／ 最近复核: 2026-09-23（假 git 用例通过）
+- 追加（2026-09-23 实跑补发 v1.53）: ①SSH 侧会**卡死**（`git ls-remote` / `git push` 长时间无输出，不是快速报错退出），
+  3 次重试 + `-f` 兜底也可能全败；②`gh` 的 HTTPS API 直连报
+  `Post https://api.github.com/graphql: net/http: TLS handshake timeout`，**设 `http_proxy` / `https_proxy=http://127.0.0.1:7897` 后可用**
+  （`curl -x` 探测：代理可达时 `proxy_api=200`，代理没起时 `000`）；③`gh-release.bat` 因此加了两条路：
+  「远端标签已指向 HEAD ⇒ 跳过 tag + 推送」（判定走 `gh api`，不吃 SSH）+ `GH_PROXY` 代理注入 —— 本次即靠它完成发布：
+  Release `v1.53`（原本是**草稿**，已 `--draft=false` 发布）+ APK `ClipboardMerger-v1.53-54.apk` 已上传。
+
+## ISSUE-006 抽段测试把「主流程」当成子过程跑了 ⇒ 误建并推送真实 tag `v1.53`
+- 状态: 已修复（2026-09-23，抽取脚本起点已改）
+- 症状 / 现场: 假 `gh` 用例跑到 `check_gh` 时，输出里冒出**真实主流程**（`[2/6] 读取版本信息` …
+  `Updated tag 'v1.53' (was 94f9621)` … `推送 v1.53 ...`）⇒ 本地多出 tag `v1.53`，**远端也被推上 `refs/tags/v1.53`**
+  （tag 对象消息 `Release v1.53`，指向当时 HEAD `7c4e154`；据此与 `build.bat` 的 `Release vX - build N` 区分是谁建的）。
+- 复发判据: ①抽取脚本自身断言：`firstline=:check_gh`，出现 `ERR: carve leaked main flow` 即复发；
+  ②测试输出里**不该**出现 `[2/6]` / `Updated tag` / `推送 `；③`git tag --list` 在测试前后应完全一致。
+- 根因: `$text.IndexOf(':check_gh')` 命中的是**主流程里的 `call :check_gh`**（早于 `:check_gh` 标签行）；
+  切出来的正文 = 主流程 + 尾部子过程，且派发器 `goto :check_gh` 落到这个「伪标签」后顺序执行主流程 ⇒ 打 tag / push 全是真的
+  （只有 `gh` 是假的，所以没建 Release）。
+- 修法: ①起点改 `(?m)^:check_gh\s*$`；②加断言「首行 = `:check_gh`」「正文不含 `[2/6]`」「标签唯一」；
+  ③测试用假 `git` 放 PATH 最前且 `tag` 一律 `exit /b 1`（兜底）；④抽取副本只做「行首 `"..."` → `call "..."`」的最小改写（`PIT-025`）。
+- 反例 / 易误判: 以为「测试只调子过程、不会碰远端」；把非强制推送的 `already exists` 拒绝当成「远端本来就有这个 tag」
+  （实际是同一事故**前一次**推送建的）；只看用例退出码（当时 9 个用例的退出码都「正常」）。
+- 相关: `PIT-025`、`ADR-011`、`ADR-009`；首次记录: 2026-09-23 ／ 最近复核: 2026-09-23（改后 9 用例全过，无主流程泄漏）

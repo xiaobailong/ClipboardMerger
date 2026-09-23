@@ -4,6 +4,30 @@
 > 归档时保留「被 ADR-xxx 取代」关系；`decisions.md` 原位置改成
 > `## ADR-nnn <标题> — 已废弃（被 ADR-xxx 取代）：见 archive/decisions-archive.md`。
 
+## ADR-008 应用内“更多”入口与构建信息：BuildConfig 注入；日志开关收口到 `Logger`
+【归档 2026-09-23，超限移出（仍是已采纳状态），原文】
+- 日期: 2026-09-23 | 状态: 已采纳
+- 背景: 需求 = 工具栏设置按钮改成“三个点 + 下拉（日志 / 关于）”；“关于”要显示构建版本 / 时间；
+  同时修掉“全局日志开关关掉后仍有日志输出”（根因见 `ISSUE-003`）。
+- 决策:
+  ①工具栏只留一个 `action_settings`（`menu/toolbar_menu.xml`，图标换成自绘 `drawable/ic_more_vert.xml` 三个点），
+  点击由 `MainActivity.showOverflowMenu()` 弹 `PopupMenu`（菜单 `menu/settings_menu.xml`：`action_log_settings` / `action_about`），
+  不再为两个入口各加一个 Toolbar 按钮。
+  ②构建信息在**配置期**算好并注入 `BuildConfig`：`app/build.gradle.kts` 顶部 `BUILD_TIME`
+  （`SimpleDateFormat`，见 `PIT-022`）+ `GIT_COMMIT`（`git rev-parse --short HEAD`，失败回落 `unknown`），
+  `buildFeatures { buildConfig = true }`；“关于”弹框读 `BuildConfig.VERSION_NAME / VERSION_CODE / BUILD_TYPE / BUILD_TIME / GIT_COMMIT`。
+  ③日志开关唯一入口 `Logger.setEnabled(context, enabled)`（内存 + `SharedPreferences`），`Logger.init()` 从 prefs 恢复；
+  Activity / Service / 输入法服务都只调 `init()`，不再各自读 prefs。
+- 理由: 构建信息编译期注入 = 无权限、无文件依赖，debug/release 都是准确值；开关收口到 `Logger`
+  ⇒ 任何进程生命周期启动都得到同一状态（`ISSUE-003`）；`PopupMenu` 是 Android 原生的“下拉选择框”，改动面最小。
+- 备选与为何不选: 用 `PackageInfo.lastUpdateTime` 当“构建时间”（那是安装/更新时间，不是编译时间）；
+  把构建信息写成 `assets` / `res/raw` 文件（多一份要维护的打包内容）；在运行时 `Runtime.exec("git ...")`
+  （手机上没有 git，也拿不到源码目录）；保留内存态开关 + 各处各自读 prefs（重复代码，且容易再次漏读）。
+- 影响 / 约束: 加/改“关于”字段 = 改 `dialog_about.xml` + `showAboutDialog()`（`activity_main` 的工具栏样式不动）；
+  `BuildConfig` 字段名删改会影响 `MainActivity`，别只改 gradle；配置期每次构建都会跑一次 `git rev-parse`（无 git 也不报错）；
+  两处开关文案 / 提示在 `strings.xml`（`settings_log*` / `about_*`），旧 `settings_title` 已随入口改版删除。
+
+
 ## ADR-001 知识库制度：`memory-bank` 按需读取 + 体积阈值 + 归档（控 token）
 【归档 2026-09-23，超限移出（仍是已采纳状态），原文】
 - 日期: 2026-09-23 | 状态: 已采纳

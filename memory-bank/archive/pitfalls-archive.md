@@ -2,6 +2,17 @@
 
 > 由 `pitfalls.md` 归档的原文（按时间倒序追加）。归档时逐字搬，不改编号、不删「正确做法 / 反例」。
 
+## PIT-021 【已复现 2026-09-23】日志在 `build\logs\`，而流程第 2 步 `gradle clean` 会删 `build\`
+【归档 2026-09-23，超限移出（仍是钉子条目），原文】
+- 已复现证据: `build\logs\build_20260922_231449.log:22-31` 报 `Unable to delete directory ... build\logs\build_<ts>.log`；
+  同一轮 `clean` 把历史日志全删（`dir /b build\logs` 只剩被占用的那 1 个）⇒ 排查时几乎没有历史日志（钉这一条）。
+- 现象（预期）: 被重定向占用的日志文件删不掉 ⇒ `gradle clean` 可能报删除失败；脚本**不检查**该步退出码
+  （`build.bat:115-117`）⇒ 静默通过，表现为“日志缺一段”。
+- 正确做法: 先看 `[2/5] 清理旧产物` 前后是否完整；彻底避免就把日志移出 `build\`。
+- 反例: 看到日志缺一段就怀疑“日志链路又坏了”（先跑 `ISSUE-001` 判据）。
+- 自检: `findstr /c:"Unable to delete" build\logs\*.log`　备注: 复现后升级为 `ISSUE-nnn` 并回填证据。
+
+
 ## PIT-019 临时产物散落在仓库根 ⇒ `git status` 噪声
 【归档 2026-09-23，原文】
 - 正确做法: 中间文件一律 `tmp\`（`mkdir tmp 2>nul`）；收尾 `rmdir /s /q tmp`（或 `clean.bat` / `build.bat clean`）。

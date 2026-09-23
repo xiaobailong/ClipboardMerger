@@ -107,14 +107,8 @@
 - 反例: 失败后马上原地重跑，再对上一轮的日志/退出码下结论。
 - 自检: 新构建 10 秒内出现**新的时间戳日志**；同时只有一个 Gradle JVM 在 assemble。
 
-## PIT-021 【已复现 2026-09-23】日志在 `build\logs\`，而流程第 2 步 `gradle clean` 会删 `build\`
-- 已复现证据: `build\logs\build_20260922_231449.log:22-31` 报 `Unable to delete directory ... build\logs\build_<ts>.log`；
-  同一轮 `clean` 把历史日志全删（`dir /b build\logs` 只剩被占用的那 1 个）⇒ 排查时几乎没有历史日志（钉这一条）。
-- 现象（预期）: 被重定向占用的日志文件删不掉 ⇒ `gradle clean` 可能报删除失败；脚本**不检查**该步退出码
-  （`build.bat:115-117`）⇒ 静默通过，表现为"日志缺一段"。
-- 正确做法: 先看 `[2/5] 清理旧产物` 前后是否完整；彻底避免就把日志移出 `build\`。
-- 反例: 看到日志缺一段就怀疑"日志链路又坏了"（先跑 `ISSUE-001` 判据）。
-- 自检: `findstr /c:"Unable to delete" build\logs\*.log`　备注: 复现后升级为 `ISSUE-nnn` 并回填证据。
+## PIT-021 【已复现 2026-09-23】日志在 `build\logs\`，而流程第 2 步 `gradle clean` 会删 `build\` — 已归档（2026-09-23）
+- 要点: 占用中的日志删不掉 ⇒ gradle clean 静默通过、日志会缺一段；自检: findstr /c:"Unable to delete" build\logs\*.log ｜ 详情: archive/pitfalls-archive.md
 
 ## PIT-022 `build.gradle.kts` 里写 `java.text.X` / `java.util.X` 全限定名 ⇒ `Unresolved reference: text / util`
 - 原因: 脚本作用域里 `java` 被 Gradle 的 `java`（`JavaPluginExtension`）扩展遮蔽；现象是 `Configure project :app` 段直接
@@ -134,3 +128,40 @@
 - 现象: `out` 写对了，`out2` **文件都不存在**（不是内容错，是压根没跑）。
 - 正确做法: `if/else` 单独占行（或用 `goto` 分流）；一行里只留无分支的 `&` 链。
 - 自检: 链上每个产物文件是否都生成；缺一个就拆行（别据此以为"命令失败了"）。
+## PIT-025 批处理里调另一个 `.bat` 必须 `call`；抽段测试的起点要用「标签行」而不是 `call :label`
+- 触发条件: ①`.bat` 里直接写 `other.bat`（不带 `call`）；②用「从某标签切到文件尾」的方式抽子过程去测。
+- 现象: ①子批的 `exit /b` 会**顶替父批上下文** ⇒ 父批后续行一行都不执行（静默「跑一半」）；
+  ②`IndexOf(':check_gh')` 命中主流程里的 `call :check_gh`，抽出来的是**主流程本体** ⇒ 测试把真实脚本整套跑了一遍（本项目事故见 `ISSUE-006`）。
+- 正确做法: ①`call "x.bat"`；②抽取用 `(?m)^:check_gh\s*$` 定位，并断言「首行 = 该标签」「正文不含主流程标志 `[2/6]`」；
+  ③测试环境把假 `git` / 假 `gh` 放 PATH 最前，假 git 的 `tag` / `push` 一律失败兜底。
+- 反例: 以为「`exit /b 1` 会正常返回父批」；以为「抽段测试只是文本切片，不会执行真流程」。
+- 自检: 测试输出里出现主流程标志（`[2/6]` / `Updated tag` / `推送 `）⇒ 主流程被跑，立刻停手查抽取起点。
+
+## PIT-026 `.bat` + `chcp 65001`：头部**中文注释**会被错解析 ⇒ 行错位、注释片段当命令执行
+- 触发条件: UTF-8（无 BOM）`.bat` 且前段有中文 / 全角注释；在**新控制台**（起始代码页 936：双击、`start "" /min cmd /c`）运行。
+- 现象: 输出顶部冒出 `'EM' is not recognized` / `'…长头部注释块。' is not recognized` 这类垃圾报错；脚本大体还能跑，
+  但**被带偏的下一行可能整行失效**（实测 `if … echo …` 整行被吃掉）。同一个脚本从 65001 的控制台跑则完全干净。
+- 正确做法: ①**根治 = 脚本开头自我重启一次**：`chcp 65001 > nul` 之后写
+  `if defined _CM_XX_RELAUNCH goto :relaunched` → `set "_CM_XX_RELAUNCH=1"` → `cmd /d /s /c ""%~f0" %*"` → `set "_CM_XX_RC=%ERRORLEVEL%"` → `exit /b %_CM_XX_RC%`
+  —— 新 cmd 的起始代码页已是 65001，整个文件从第 0 字节起按 UTF-8 解析，中文注释也不再被带偏
+  （`build.bat` 一直干净就是这个原因：`tools\tee-log.ps1` 先把控制台设成 UTF-8，子进程一开始就在 65001 下）；
+  ②兜底（不重启时）: `REM` / `::` 注释保持 ASCII、中文只放 `echo` 字符串里（实测：ASCII 注释版 0 报错，中文注释版 2~5 条报错）；
+  注释里不要出现 `> < & | ^ %`（`REM a > b` 会创建文件、`REM a & b` 会执行 `b`，`PIT-006` 同族）；
+  ③把 `chcp 65001` 挪到第 1 行**没用**（实测同样报错）。
+- 反例: 以为“有 `chcp 65001` 就没事”；把垃圾报错当成“脚本逻辑坏了 / 命令失败”。
+- 自检: 用**新控制台**跑只读模式 `start "" /min cmd /c "gh-release.bat check > tmp\x.out 2>&1"`，
+  输出顶部不应出现任何 `is not recognized`；注释行扫描 `rem_bad=0`（临时 ps1：非 ASCII 或 `> < & | ^ %` 计数）。
+
+## PIT-027 `gh release upload --clobber` 会漏删同名资产 ⇒ HTTP 422 `ReleaseAsset.name already exists`
+- 触发条件: Release 里已经有同名 APK（尤其是上一次上传中途 TLS 超时 / 中断过），再次 `release upload --clobber`。
+- 现象: `HTTP 422: Validation Failed (.../assets?label=&name=xxx.apk)` + `ReleaseAsset.name already exists`；
+  此时 `gh release view --json assets` 可能返回**空列表**（`--clobber` 正是靠它找旧资产）—— 但 `gh api .../releases/<id>/assets` 能查到那条已 uploaded 的资产。
+- 正确做法: 别信 gh 的资产列表，走 REST：`gh api "repos/<repo>/releases/tags/<tag>" --jq .id` 取 release id →
+  `gh api "repos/<repo>/releases/<id>/assets?per_page=100" --jq ".[].id"` 列资产 id →
+  逐个 `gh api "repos/<repo>/releases/assets/<id>" --jq .name` 比对文件名，命中即
+  `gh api -X DELETE "repos/<repo>/releases/assets/<id>"`，最后再 `release upload --clobber`。
+  已落到 `gh-release.bat`（`:drop_same_asset`）。
+  实测对照：`gh release delete-asset v1.53 ClipboardMerger-v1.53-54.apk --yes` 报
+  `asset ... not found in release v1.53`，但同一条资产（id 583293306，state=uploaded）在 REST 里查得到。
+- 反例: 以为“`--clobber` 一定覆盖成功”；把 422 当成“权限 / 标签不存在”。
+- 自检: 同一版本**连跑两次** `gh-release.bat`，第二次不应再出现 422。

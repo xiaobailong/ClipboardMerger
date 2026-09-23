@@ -60,27 +60,10 @@
 - 要点: 仓库侧 = `.clineignore` 挡构建产物（**故意保留 `build/logs/`**）+ `.clinerules` 只留硬约束 + 知识库检索式读取 + 主文件限体积；
   客户端侧 = 开 Auto-Compact、收尾 `/smol`、换任务 `/newtask`。详情: `archive/decisions-archive.md`
 
-## ADR-008 应用内“更多”入口与构建信息：BuildConfig 注入；日志开关收口到 `Logger`
-- 日期: 2026-09-23 | 状态: 已采纳
-- 背景: 需求 = 工具栏设置按钮改成“三个点 + 下拉（日志 / 关于）”；“关于”要显示构建版本 / 时间；
-  同时修掉“全局日志开关关掉后仍有日志输出”（根因见 `ISSUE-003`）。
-- 决策:
-  ①工具栏只留一个 `action_settings`（`menu/toolbar_menu.xml`，图标换成自绘 `drawable/ic_more_vert.xml` 三个点），
-  点击由 `MainActivity.showOverflowMenu()` 弹 `PopupMenu`（菜单 `menu/settings_menu.xml`：`action_log_settings` / `action_about`），
-  不再为两个入口各加一个 Toolbar 按钮。
-  ②构建信息在**配置期**算好并注入 `BuildConfig`：`app/build.gradle.kts` 顶部 `BUILD_TIME`
-  （`SimpleDateFormat`，见 `PIT-022`）+ `GIT_COMMIT`（`git rev-parse --short HEAD`，失败回落 `unknown`），
-  `buildFeatures { buildConfig = true }`；“关于”弹框读 `BuildConfig.VERSION_NAME / VERSION_CODE / BUILD_TYPE / BUILD_TIME / GIT_COMMIT`。
-  ③日志开关唯一入口 `Logger.setEnabled(context, enabled)`（内存 + `SharedPreferences`），`Logger.init()` 从 prefs 恢复；
-  Activity / Service / 输入法服务都只调 `init()`，不再各自读 prefs。
-- 理由: 构建信息编译期注入 = 无权限、无文件依赖，debug/release 都是准确值；开关收口到 `Logger`
-  ⇒ 任何进程生命周期启动都得到同一状态（`ISSUE-003`）；`PopupMenu` 是 Android 原生的“下拉选择框”，改动面最小。
-- 备选与为何不选: 用 `PackageInfo.lastUpdateTime` 当“构建时间”（那是安装/更新时间，不是编译时间）；
-  把构建信息写成 `assets` / `res/raw` 文件（多一份要维护的打包内容）；在运行时 `Runtime.exec("git ...")`
-  （手机上没有 git，也拿不到源码目录）；保留内存态开关 + 各处各自读 prefs（重复代码，且容易再次漏读）。
-- 影响 / 约束: 加/改“关于”字段 = 改 `dialog_about.xml` + `showAboutDialog()`（`activity_main` 的工具栏样式不动）；
-  `BuildConfig` 字段名删改会影响 `MainActivity`，别只改 gradle；配置期每次构建都会跑一次 `git rev-parse`（无 git 也不报错）；
-  两处开关文案 / 提示在 `strings.xml`（`settings_log*` / `about_*`），旧 `settings_title` 已随入口改版删除。
+## ADR-008 应用内“更多”入口与构建信息：BuildConfig 注入；日志开关收口到 `Logger` — 已归档（2026-09-23）
+- 要点: 工具栏单按钮 → `PopupMenu`（`menu/settings_menu.xml`：日志 / 关于）；构建信息 `BUILD_TIME` / `GIT_COMMIT`
+  配置期注入 `BuildConfig`（`app/build.gradle.kts`，需 `buildConfig = true`）；日志开关唯一入口 `Logger.setEnabled()`（内存 + prefs）。
+  详情: `archive/decisions-archive.md`
 
 ## ADR-009 gh 发布逻辑集中成 `:check_gh` / `:gh_release` 子过程，并做成幂等
 - 日期: 2026-09-23 | 状态: 已采纳
@@ -112,3 +95,27 @@
   把 `build.bat` 整体改写成 PowerShell（改动面太大）。
 - 影响 / 约束: 改日志链路要同步更新 `ISSUE-001` 判据；`tools\` 随仓库入库、别删；控制台内容 = 日志文件内容（tee 之外只剩 build.bat 的两行提示）；
   验证方式：跑 `tmp\` 里的假子脚本（禁跑 `build.bat`，见 `ADR-004`）—— 中途 `type` 已见行 + 控制台流一致 + 退出码回传。
+
+## ADR-011 新增独立发布脚本 `gh-release.bat`：以「最后一个提交」为发布对象，只做 gh
+- 日期: 2026-09-23 | 状态: 已采纳
+- 背景: `build.bat` 把 递增版本 → 编译 → commit/push → tag → `gh release` 串成一条**不可逆**的链；
+  gh / 网络 / 登录一出问题（`ISSUE-005` 那类瞬断），想“只补发 Release”就得重跑整条链（还会再吃一个 `versionCode`，`ISSUE-002`）。
+  需求 = 单独一个脚本，用**最后一个提交**补发 Release。
+- 决策: 新增仓库根 `gh-release.bat`（与 `build.bat` 同级，可双击）：**不递增版本、不提交、不编译**。
+  ①标签名取自 `version.properties`（真源，`ADR-005`）；②标签强制指向 HEAD（`git tag -f -a`），已存在但指他处时先警告 + 要求输入 `y` 确认；
+  ③未推送则先 push main → push tag（失败回落 `-f`，复用 `:git_push` 3 次重试，`ADR-009`）→ `:gh_release` 幂等建/更新 Release + 上传 APK；
+  ④Release 说明 = `ClipboardMerger vX.XX (build N) | <HEAD 短哈希 + 提交标题>`；⑤APK 定位顺序 = 根目录 `ClipboardMerger-v<ver>-<code>.apk`
+  → 根目录任意 `*.apk` → `build\outputs\apk\debug\*.apk`；⑥`gh-release.bat check` = 只读预检（打印将执行的命令）；可显式传 `<tag> [apk]`；
+  `GH_EXE` / `GH_REPO` 支持环境变量覆盖（为测试）。
+- 理由: 发布失败可单独、幂等重试；脚本不碰版本号与工作区 ⇒ 重跑不污染 git 历史；`check` 让“发布前看一眼”零成本。
+- 备选与为何不选: 让 `build.bat` 改成 `call gh-release.bat`（要动发布主链路，风险大，本轮不动 —— 代价是两处 `:gh_release` 有漂移风险）；
+  给 `build.bat` 加子命令（仍要改频繁变动的 `build.bat`）；手敲 `gh release create`（标签 / 推送 / 幂等 / APK 定位都要手打，易漏）。
+- 影响 / 约束: 脚本只对 HEAD 生效（要发旧提交得先切过去）；改 `:gh_release` 行为要两处一起改；
+  动态文本（提交标题）拼命令行前必须消毒（`PIT-025`）；抽段测试必须从**标签行**切（`ISSUE-006`）；`build.bat` 自身行为未改动。
+- 追加（2026-09-23 实跑后）: ①**远端标签已指向 HEAD 就跳过打标签 / 推标签** —— 用
+  `gh api repos/{repo}/commits/{tag} --jq .sha` 取远端标签指向的提交（取值要 `for /f "usebackq"` + `call "带空格路径"`，见 `PIT-023`；
+  走 HTTPS 从而绕开卡死的 SSH；取值为空则退回原逻辑）；②代理：设 `GH_PROXY` 即导出 `http_proxy` / `https_proxy` 给 gh / git(HTTPS)，未设时用 `curl -x` 探测 `127.0.0.1:7897`（通了自动用，探测失败照旧直连）；
+  ③`:gh_release` 的更新分支发现 Release 是**草稿**时改用 `release edit --draft=false` 一并发布（否则传了 APK 也“看不见”）；
+  ④开头**自我重启一次**（`PIT-026`：新 cmd 的起始代码页即 65001）+ 注释行保持 ASCII 兜底 —— 新控制台下 0 垃圾报错；
+  ⑤**日志**：复用 `tools\tee-log.ps1`（`ADR-010` 的 tee 包装器）—— 每条输出**先落盘 `build\logs\gh-release_<ts>.log`（UTF-8 BOM、AutoFlush）再回显控制台**，
+  跑完打印日志路径并回传退出码；缺 `tee-log.ps1` 时退回「重定向 + 结束 `type`」的降级分支（同 `build.bat`）。
