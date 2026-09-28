@@ -6,8 +6,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.inputmethodservice.InputMethodService
-import android.os.Handler
-import android.os.Looper
+import android.os.IBinder
 import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.View
@@ -21,7 +20,6 @@ class ClipboardInputMethodService : InputMethodService() {
     private var clipboardManager: ClipboardManager? = null
     private var lastClipLabel: String = ""
     private var tvStatus: TextView? = null
-    private val handler = Handler(Looper.getMainLooper())
 
     private val clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
         Logger.d("IMEService.ClipboardListener: onPrimaryClipChanged triggered")
@@ -260,28 +258,49 @@ class ClipboardInputMethodService : InputMethodService() {
             return
         }
 
-        Logger.d("IMEService.switchToTargetIme: current=$currentId (idx=$currentIndex), target=$targetId (idx=$targetIndex), steps=$steps")
-        tvStatus?.text = "切换中…"
-        switchNextN(steps, imm)
+        Logger.d("IMEService.switchToTargetIme: targetId=$targetId, currentId=$currentId")
+        tvStatus?.text = "\u5207\u6362\u4e2d\u2026"
+
+        if (targetImeId.isNotEmpty()) {
+            switchToSpecificIme(targetImeId, imm)
+        } else {
+            switchToNextIme(imm)
+        }
     }
 
-    private fun switchNextN(remaining: Int, imm: InputMethodManager) {
-        Logger.d("IMEService.switchNextN: remaining=$remaining")
-        if (remaining <= 0) {
-            tvStatus?.text = "\uD83D\uDCD6 剪贴板监听"
-            Logger.d("IMEService.switchNextN: done")
+    private fun switchToSpecificIme(targetImeId: String, imm: InputMethodManager) {
+        val imeToken = window.window?.attributes?.token
+        Logger.d("IMEService.switchToSpecificIme: targetImeId=[$targetImeId], imeToken=${imeToken != null}")
+        if (imeToken == null) {
+            Logger.w("IMEService.switchToSpecificIme: imeToken is null, showing picker")
+            imm.showInputMethodPicker()
             return
         }
         try {
-            val token = window.window?.attributes?.token
-            Logger.d("IMEService.switchNextN: token=${token != null}")
-            imm.switchToNextInputMethod(token, false)
+            val method = InputMethodManager::class.java.getMethod("setInputMethod", IBinder::class.java, String::class.java)
+            method.invoke(imm, imeToken, targetImeId)
+            Logger.d("IMEService.switchToSpecificIme: reflection succeeded")
         } catch (e: Exception) {
-            Logger.e("IMEService.switchNextN: switchToNextInputMethod failed: ${e.message}", e)
+            Logger.w("IMEService.switchToSpecificIme: reflection failed: ${e.message}, showing picker")
+            imm.showInputMethodPicker()
         }
-        handler.postDelayed({
-            switchNextN(remaining - 1, imm)
-        }, 80)
+    }
+
+    private fun switchToNextIme(imm: InputMethodManager) {
+        val imeToken = window.window?.attributes?.token
+        Logger.d("IMEService.switchToNextIme: imeToken=${imeToken != null}")
+        if (imeToken == null) {
+            Logger.w("IMEService.switchToNextIme: imeToken is null, showing picker")
+            imm.showInputMethodPicker()
+            return
+        }
+        try {
+            imm.switchToNextInputMethod(imeToken, false)
+            Logger.d("IMEService.switchToNextIme: switchToNextInputMethod called")
+        } catch (e: Exception) {
+            Logger.e("IMEService.switchToNextIme: failed: ${e.message}", e)
+            imm.showInputMethodPicker()
+        }
     }
 
     private fun getCurrentInputMethodId(): String {
