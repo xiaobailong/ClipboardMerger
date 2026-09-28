@@ -7,6 +7,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.SharedPreferences
 import android.graphics.Canvas
 import android.os.Build
 import android.os.Bundle
@@ -17,7 +18,10 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.inputmethod.InputMethodManager
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.EditText
+import android.widget.ListView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -578,6 +582,10 @@ class MainActivity : AppCompatActivity() {
                     showLogSettingsDialog()
                     true
                 }
+                R.id.action_ime_settings -> {
+                    showImeSettingsDialog()
+                    true
+                }
                 R.id.action_about -> {
                     showAboutDialog()
                     true
@@ -649,5 +657,78 @@ class MainActivity : AppCompatActivity() {
             .setView(dialogView)
             .setPositiveButton(android.R.string.ok, null)
             .show()
+    }
+
+    private fun showImeSettingsDialog() {
+        Logger.d("IME settings dialog: opened")
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        val enabledImes = imm.enabledInputMethodList
+        Logger.d("IME settings dialog: total enabled IMEs count=${enabledImes.size}")
+
+        val imeLabels = mutableListOf<String>()
+        val imeIds = mutableListOf<String>()
+
+        imeLabels.add(getString(R.string.ime_settings_none))
+        imeIds.add("")
+
+        for (ime in enabledImes) {
+            val label = ime.loadLabel(packageManager).toString()
+            val id = ime.id
+            Logger.d("IME settings dialog: ime id=[$id], label=[$label]")
+            if (id == "$packageName/${ClipboardInputMethodService::class.java.simpleName}") {
+                Logger.d("IME settings dialog: skip self ime id=[$id]")
+                continue
+            }
+            imeLabels.add(label)
+            imeIds.add(id)
+        }
+        Logger.d("IME settings dialog: candidate IMEs count=${imeLabels.size - 1}")
+        if (imeLabels.size <= 1) {
+            Logger.w("IME settings dialog: no other IMEs enabled, only default option available")
+        }
+
+        val dialogView = layoutInflater.inflate(R.layout.dialog_ime_settings, null)
+        val listView = dialogView.findViewById<ListView>(R.id.listIme)
+
+        val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_single_choice, imeLabels)
+        listView.adapter = adapter
+
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val savedImeId = prefs.getString(KEY_TARGET_IME, "") ?: ""
+        val savedIndex = imeIds.indexOf(savedImeId).coerceAtLeast(0)
+        Logger.d("IME settings dialog: restored savedImeId=[$savedImeId], index=$savedIndex")
+        listView.setItemChecked(savedIndex, true)
+        listView.setSelection(savedIndex)
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.ime_settings_title)
+            .setView(dialogView)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val selectedPosition = listView.checkedItemPosition
+                Logger.d("IME settings dialog: OK clicked, checkedItemPosition=$selectedPosition")
+                if (selectedPosition >= 0 && selectedPosition < imeIds.size) {
+                    val selectedImeId = imeIds[selectedPosition]
+                    val selectedLabel = imeLabels[selectedPosition]
+                    prefs.edit().putString(KEY_TARGET_IME, selectedImeId).apply()
+                    Logger.d("IME settings dialog: saved imeId=[$selectedImeId], label=[$selectedLabel]")
+                    Toast.makeText(this, R.string.ime_settings_saved, Toast.LENGTH_SHORT).show()
+                } else {
+                    Logger.w("IME settings dialog: invalid selectedPosition=$selectedPosition, no save")
+                }
+            }
+            .setNegativeButton(android.R.string.cancel) { _, _ ->
+                Logger.d("IME settings dialog: cancelled, no changes saved")
+            }
+            .show()
+
+        listView.onItemClickListener = AdapterView.OnItemClickListener { _, _, position, _ ->
+            Logger.d("IME settings dialog: list item clicked position=$position, label=[${imeLabels[position]}]")
+            listView.setItemChecked(position, true)
+        }
+    }
+
+    companion object {
+        const val PREFS_NAME = "clipboard_merger_settings"
+        const val KEY_TARGET_IME = "target_ime_id"
     }
 }

@@ -149,11 +149,19 @@ class ClipboardInputMethodService : InputMethodService() {
         btnSwitchBack.setOnClickListener {
             Logger.d("IMEService: switch IME button clicked")
             try {
-                switchToTargetIme(0)
+                val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                val targetImeId = prefs.getString(KEY_TARGET_IME, "") ?: ""
+                if (targetImeId.isEmpty()) {
+                    Logger.d("IMEService: no saved target IME, will switch to next IME (default behavior)")
+                } else {
+                    Logger.d("IMEService: using saved target IME id=[$targetImeId]")
+                }
+                switchToTargetIme(targetImeId)
             } catch (e: Throwable) {
                 Logger.e("IMEService: switchToTargetIme exception: ${e.message}", e)
                 try {
                     val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                    Logger.d("IMEService: fallback - showing input method picker")
                     imm.showInputMethodPicker()
                 } catch (e2: Exception) {
                     Logger.e("IMEService: fallback picker also failed: ${e2.message}", e2)
@@ -186,8 +194,8 @@ class ClipboardInputMethodService : InputMethodService() {
         super.onDestroy()
     }
 
-    private fun switchToTargetIme(targetIndex: Int) {
-        Logger.d("IMEService.switchToTargetIme: ENTER targetIndex=$targetIndex")
+    private fun switchToTargetIme(targetImeId: String) {
+        Logger.d("IMEService.switchToTargetIme: ENTER targetImeId=[$targetImeId]")
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         val enabledImes = imm.enabledInputMethodList
         Logger.d("IMEService.switchToTargetIme: enabledImes count=${enabledImes.size}")
@@ -201,6 +209,28 @@ class ClipboardInputMethodService : InputMethodService() {
             return
         }
 
+        val targetIndex: Int
+        if (targetImeId.isNotEmpty()) {
+            targetIndex = enabledImes.indexOfFirst { it.id == targetImeId }
+            if (targetIndex < 0) {
+                Logger.d("IMEService.switchToTargetIme: saved IME id=[$targetImeId] not found in enabled list, showing picker")
+                imm.showInputMethodPicker()
+                return
+            }
+            Logger.d("IMEService.switchToTargetIme: found saved IME at index=$targetIndex")
+        } else {
+            val currentId = getCurrentInputMethodId()
+            val currentIndex = enabledImes.indexOfFirst { it.id == currentId }
+            if (currentIndex < 0) {
+                Logger.d("IMEService.switchToTargetIme: current IME not found, showing picker")
+                imm.showInputMethodPicker()
+                return
+            }
+            targetIndex = (currentIndex + 1) % enabledImes.size
+            Logger.d("IMEService.switchToTargetIme: no saved IME, switching to next: currentIndex=$currentIndex, targetIndex=$targetIndex")
+        }
+
+        Logger.d("IMEService.switchToTargetIme: targetIndex=$targetIndex")
         if (targetIndex < 0 || targetIndex >= enabledImes.size) {
             Logger.d("IMEService.switchToTargetIme: targetIndex=$targetIndex out of range [0..${enabledImes.size - 1}], showing picker")
             imm.showInputMethodPicker()
@@ -260,5 +290,7 @@ class ClipboardInputMethodService : InputMethodService() {
 
     companion object {
         const val ACTION_CLIPBOARD_UPDATED = "com.example.clipboardmerger.CLIPBOARD_UPDATED"
+        const val PREFS_NAME = "clipboard_merger_settings"
+        const val KEY_TARGET_IME = "target_ime_id"
     }
 }

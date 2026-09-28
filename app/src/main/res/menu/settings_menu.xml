@@ -5,6 +5,9 @@
         android:id="@+id/action_log_settings"
         android:title="@string/settings_log" />
     <item
+        android:id="@+id/action_ime_settings"
+        android:title="@string/settings_ime" />
+    <item
         android:id="@+id/action_about"
         android:title="@string/settings_about" />
 </menu>
