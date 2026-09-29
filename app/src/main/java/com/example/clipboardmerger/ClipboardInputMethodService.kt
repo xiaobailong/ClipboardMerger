@@ -105,9 +105,7 @@ class ClipboardInputMethodService : InputMethodService() {
 
         val screenHeight = resources.displayMetrics.heightPixels
         val maxHeight = (screenHeight * 0.25).toInt()
-        view.layoutParams = ViewGroup.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, maxHeight
-        )
+        view.layoutParams?.height = maxHeight
         Logger.d("IMEService.onCreateInputView: screenHeight=$screenHeight, maxHeight=$maxHeight")
 
         val btnClearClipboard = view.findViewById<Button>(R.id.btnClearClipboard)

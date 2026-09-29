@@ -50,8 +50,9 @@ ClipboardMerger/
   set ANDROID_SDK_ROOT=D:\Tools\DevTools\Android\Sdk
   set "PATH=D:\Tools\DevTools\Java\JDK\jdk-21.0.10-oracle\bin;D:\Tools\DevTools\gradle\gradle-8.5\bin;%PATH%"
   cd /d "d:\WorkSpace\test\ClipboardMerger"
-  gradle assembleDebug
+  call gradle assembleDebug & exit
   ```
+  **关键**：`gradle` 是 `.bat` 文件，必须用 `call` 调用，否则控制权转移后 `& exit` 不会执行，终端无法自关闭。
 - **单独补发 Release**: `gh-release.bat`（以最后一个提交为目标，不编译 / 不改版本，`check` = 只读预检）
 - **版本号**: `version.properties` 是唯一真源，构建时自动递增小版本号
 

@@ -17,6 +17,7 @@
   - **接受现实**：无法在工具层面强制复用或清理终端。
   - **唯一可靠方案 —— 命令末尾 `& exit` 自关闭**：
     - 所有短命令（git、echo 等）末尾加 `& exit`，命令执行完终端自动关闭。
+    - **关键**：如果命令中包含 `.bat` 或 `.cmd` 文件（如 `gradle`），必须用 `call` 调用（如 `call gradle assembleDebug`），否则 cmd 会把控制权转移给该脚本不返回，后面的 `& exit` 不会执行。
     - 构建命令：通过 `.bat` + `Start-Process` 异步启动（bat 末尾加 `exit`），当前终端发完 Start-Process 后也 `& exit`。
     - 格式：`command args & exit`（cmd 语法，注意是 `&` 不是 `;`）。
   - **终端命名（必须）**：每个新终端首条命令必须是标识头：
