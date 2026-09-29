@@ -13,6 +13,7 @@ import android.os.IBinder
 import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
@@ -101,6 +102,15 @@ class ClipboardInputMethodService : InputMethodService() {
     override fun onCreateInputView(): View {
         Logger.d("IMEService.onCreateInputView")
         val view = layoutInflater.inflate(R.layout.ime_view, null)
+
+        view.post {
+            val screenHeight = resources.displayMetrics.heightPixels
+            val maxHeight = (screenHeight * 0.25).toInt()
+            val lp = view.layoutParams
+            lp.height = maxHeight
+            view.layoutParams = lp
+            Logger.d("IMEService.onCreateInputView.post: screenHeight=$screenHeight, maxHeight=$maxHeight")
+        }
 
         val btnClearClipboard = view.findViewById<Button>(R.id.btnClearClipboard)
         val btnPasteLast = view.findViewById<Button>(R.id.btnPasteLast)

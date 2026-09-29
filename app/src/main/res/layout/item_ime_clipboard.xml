@@ -4,16 +4,17 @@
     android:layout_height="wrap_content"
     android:background="#FF1A3A1A"
     android:gravity="center_vertical"
-    android:minHeight="36dp"
+    android:minHeight="28dp"
     android:orientation="horizontal"
     android:paddingHorizontal="6dp"
-    android:paddingVertical="2dp">
+    android:paddingVertical="0dp">
 
     <CheckBox
         android:id="@+id/cbImeItem"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:buttonTint="#FF81C784"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:buttonTint="#FF00E676"
+        android:focusable="false"
         android:minWidth="0dp"
         android:minHeight="0dp"
         android:padding="0dp" />
@@ -22,11 +23,15 @@
         android:id="@+id/tvImeContent"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="4dp"
+        android:layout_marginStart="2dp"
         android:layout_weight="1"
         android:ellipsize="none"
+        android:includeFontPadding="false"
+        android:lineSpacingExtra="0dp"
+        android:lineSpacingMultiplier="1.0"
         android:maxLines="5"
+        android:paddingVertical="1dp"
         android:textColor="#FFE8F5E9"
-        android:textSize="12sp" />
+        android:textSize="11sp" />
 
 </LinearLayout>

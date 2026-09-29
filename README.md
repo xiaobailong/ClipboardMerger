@@ -29,9 +29,10 @@
 
 - **剪贴板历史记录** — 自动收集所有复制到剪贴板的文本内容
 - **后台监听** — 输入法模式持续监听，App 前台时由后台服务补充
-- **合并粘贴** — 选中多条记录，一键合并到剪贴板
+- **IME 历史列表** — IME 键盘内直接展示复制历史，最新在前，支持滚动
+- **多选粘贴** — IME 键盘内支持多选，粘贴按钮智能输出：默认粘贴最新一条，选中某条粘贴该条，多选则全部合并粘贴
+- **合并粘贴** — App 内选中多条记录，一键合并到剪贴板
 - **批量粘贴** — 在 IME 键盘中一键将所有收集内容粘贴到目标应用
-- **单条粘贴** — 在 IME 键盘中粘贴最近一条剪贴板内容
 - **一键清空** — IME 键盘中一键清空系统剪切板并清除全部收集记录
 - **滑动删除** — 列表项左滑快速删除
 - **GitHub 同步** — 支持将文本内容拉取/保存到 GitHub 仓库的指定文件，自动处理 Base64 编解码和 SHA 版本控制
@@ -86,11 +87,23 @@ Android 10+ 严格限制后台应用读取剪贴板，只有**当前默认输入
 
 ### IME 键盘操作
 
-当剪贴板收集器是默认输入法时，在任意文本框中弹出键盘：
+当剪贴板收集器是默认输入法时，在任意文本框中弹出键盘。键盘上半部分显示复制历史列表，下半部分为操作按钮栏。
+
+**复制历史列表**：
+
+| 特性 | 说明 |
+|---|---|
+| 排列顺序 | 最新复制的内容在最前面 |
+| 内容展示 | 每条复制内容占一行，超长时自动换行 |
+| 多选 | 点击每条左侧的复选框可多选 |
+| 滚动 | 列表内容超出键盘区域时可上下滚动 |
+| 高度限制 | 键盘整体最高占屏幕 25%，避免遮挡输入目标 |
+
+**按钮操作**：
 
 | 按钮 | 功能 |
 |---|---|
-| **粘贴** | 将最近一条剪贴板内容粘贴到当前输入框 |
+| **粘贴** | 智能粘贴：未选中任何项时粘贴最新一条；选中一条粘贴该项；选中多条则合并所有选中内容（换行分隔）一次性粘贴到输入框 |
 | **全部粘贴** | 将所有收集到的内容按时间倒序拼接，一次性粘贴 |
 | **删除** | 删除当前输入框中选中的文字 |
 | **切换** | 单击切换到设置中指定的目标输入法（未设置时切换到下一个输入法），长按弹出系统键盘选择器 |
@@ -298,15 +311,16 @@ ClipboardMerger/
 │   └── src/main/
 │       ├── AndroidManifest.xml         # 应用清单
 │       ├── java/com/example/clipboardmerger/
-│       │   ├── MainActivity.kt                # 主界面（含 Tab 切换和 GitHub 操作回调）
-│       │   ├── ClipboardService.kt            # 后台剪贴板监听服务
-│       │   ├── ClipboardInputMethodService.kt # 输入法服务（IME）
-│       │   ├── ClipboardRepository.kt         # 本地存储（JSON 文件，最多 5000 条）
-│       │   ├── ClipboardViewModel.kt          # ViewModel 数据管理
-│       │   ├── ClipboardAdapter.kt            # 列表适配器
-│       │   ├── ClipboardItem.kt               # 数据模型
-│       │   ├── GitHubHelper.kt                # GitHub API 交互（拉取/保存文件）
-│       │   └── Logger.kt                      # 日志工具
+│   │   ├── MainActivity.kt                # 主界面（含 Tab 切换和 GitHub 操作回调）
+│   │   ├── ClipboardService.kt            # 后台剪贴板监听服务
+│   │   ├── ClipboardInputMethodService.kt # 输入法服务（IME）
+│   │   ├── ClipboardRepository.kt         # 本地存储（SharedPreferences JSON，最多 5000 条）
+│   │   ├── ClipboardViewModel.kt          # ViewModel 数据管理
+│   │   ├── ClipboardAdapter.kt            # 主界面列表适配器
+│   │   ├── ImeClipboardAdapter.kt         # IME 键盘历史列表适配器（含多选）
+│   │   ├── ClipboardItem.kt               # 数据模型
+│   │   ├── GitHubHelper.kt                # GitHub API 交互（拉取/保存文件）
+│   │   └── Logger.kt                      # 日志工具
 │       ├── res/
 │           ├── layout/
 │           │   ├── activity_main.xml           # 主界面布局（含 TabLayout）
@@ -315,7 +329,8 @@ ClipboardMerger/
 │           │   ├── dialog_settings.xml         # 全局设置弹窗布局
 │           │   ├── dialog_ime_settings.xml      # IME 切换目标设置弹窗布局
 │           │   ├── ime_view.xml                # IME 键盘布局
-│           │   └── item_clipboard.xml          # 列表项布局
+│           │   ├── item_clipboard.xml          # 主列表项布局
+│           │   ├── item_ime_clipboard.xml      # IME 列表项布局（含复选框）
 │           ├── menu/
 │           │   └── toolbar_menu.xml            # Toolbar 设置菜单（日志 / 切换目标 / 关于）
 │           ├── values/
@@ -367,7 +382,7 @@ ClipboardMerger/
 
 ### Q: IME 键盘的「粘贴」按钮为什么没反应？
 
-「粘贴」按钮粘贴的是**系统剪贴板中当前的内容**，而不是历史列表中的内容。如果系统剪贴板为空（或被其他应用清空），则无法粘贴。如需粘贴历史记录，请使用 **「全部粘贴」** 按钮。
+「粘贴」按钮在没有选中任何记录时粘贴**最新一条**历史记录。如果列表为空则无法粘贴，状态栏会显示「📋 无记录」。需要先在其他 App 中复制文字以积累历史记录。
 
 ### Q: GitHub 同步失败，提示 "HTTP 401" 或 "Bad credentials"？
 
