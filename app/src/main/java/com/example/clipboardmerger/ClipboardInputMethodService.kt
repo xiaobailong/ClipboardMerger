@@ -17,6 +17,7 @@ import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -105,8 +106,10 @@ class ClipboardInputMethodService : InputMethodService() {
 
         val screenHeight = resources.displayMetrics.heightPixels
         val maxHeight = (screenHeight * 0.25).toInt()
-        view.layoutParams?.height = maxHeight
-        Logger.d("IMEService.onCreateInputView: screenHeight=$screenHeight, maxHeight=$maxHeight")
+        val density = resources.displayMetrics.density
+        val reservedDp = 40
+        val reservedPx = (reservedDp * density).toInt()
+        Logger.d("IMEService.onCreateInputView: screenHeight=$screenHeight, maxHeight=$maxHeight, density=$density, reservedPx=$reservedPx")
 
         val btnClearClipboard = view.findViewById<Button>(R.id.btnClearClipboard)
         val btnPasteLast = view.findViewById<Button>(R.id.btnPasteLast)
@@ -115,6 +118,22 @@ class ClipboardInputMethodService : InputMethodService() {
         val btnDelete = view.findViewById<Button>(R.id.btnDelete)
         tvStatus = view.findViewById<TextView>(R.id.tvImeStatus)
         rvClipboard = view.findViewById<RecyclerView>(R.id.rvImeClipboard)
+        // 框架 addView 强制 WRAP_CONTENT 覆盖根 view.layoutParams，但 rv 在 LinearLayout 内部的 layoutParams 不受影响；
+        // 直接设 rv 高度 = maxHeight - 按钮栏 - 状态栏预留，不再依赖 weight（weight 在 WRAP_CONTENT 下行为不可控）
+        val rvHeight = (maxHeight - reservedPx).coerceAtLeast(0)
+        rvClipboard?.layoutParams?.height = rvHeight
+        Logger.d("IMEService.onCreateInputView: rvHeight=$rvHeight, rvLpHeight=${rvClipboard?.layoutParams?.height}")
+
+        // 延迟记录布局后的实际高度（用于诊断漂移/高度问题）
+        view.post {
+            val btnBar = view.findViewById<LinearLayout>(R.id.btnBarContainer)
+            val actualViewH = view.height
+            val actualRvH = rvClipboard?.height ?: -1
+            val actualBtnBarH = btnBar?.height ?: -1
+            val actualTvStatusH = tvStatus?.height ?: -1
+            val lpHeight = view.layoutParams?.height ?: -2
+            Logger.d("IMEService.layout: viewH=$actualViewH, rvH=$actualRvH, btnBarH=$actualBtnBarH, statusH=$actualTvStatusH, viewLpHeight=$lpHeight, screenH=$screenHeight, maxH=$maxHeight")
+        }
 
         imeAdapter = ImeClipboardAdapter()
         imeAdapter?.onItemClickListener = { item ->
@@ -239,7 +258,9 @@ class ClipboardInputMethodService : InputMethodService() {
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
-        Logger.d("IMEService.onStartInputView: restarting=$restarting, fieldName=${info?.fieldName}")
+        val rvH = rvClipboard?.height ?: -1
+        val rvItemCount = imeAdapter?.itemCount ?: -1
+        Logger.d("IMEService.onStartInputView: restarting=$restarting, fieldName=${info?.fieldName}, rvH=$rvH, rvItems=$rvItemCount")
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
