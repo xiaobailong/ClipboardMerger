@@ -82,6 +82,17 @@
 
     </LinearLayout>
 
+    <!-- 剪贴板历史列表 -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvImeClipboard"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:minHeight="120dp"
+        android:background="#FF14501E"
+        android:clipToPadding="false"
+        android:padding="2dp" />
+
     <!-- 底部状态栏 -->
     <TextView
         android:id="@+id/tvImeStatus"

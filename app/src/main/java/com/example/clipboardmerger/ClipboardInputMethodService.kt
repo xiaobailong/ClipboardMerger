@@ -1,11 +1,14 @@
 package com.example.clipboardmerger
 
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.inputmethodservice.InputMethodService
+import android.os.Build
 import android.os.IBinder
 import android.os.SystemClock
 import android.view.KeyEvent
@@ -14,12 +17,23 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.TextView
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 
 class ClipboardInputMethodService : InputMethodService() {
 
     private var clipboardManager: ClipboardManager? = null
     private var lastClipLabel: String = ""
     private var tvStatus: TextView? = null
+    private var rvClipboard: RecyclerView? = null
+    private var imeAdapter: ImeClipboardAdapter? = null
+
+    private val clipboardUpdateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            Logger.d("IMEService.BroadcastReceiver: received clipboard update")
+            refreshClipboardList()
+        }
+    }
 
     private val clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
         Logger.d("IMEService.ClipboardListener: onPrimaryClipChanged triggered")
@@ -50,11 +64,21 @@ class ClipboardInputMethodService : InputMethodService() {
         }
         if (captured) {
             Logger.d("IMEService.ClipboardListener: sending broadcast, label=[$lastClipLabel]")
+            refreshClipboardList()
             val intent = Intent(ACTION_CLIPBOARD_UPDATED).apply {
                 setPackage(packageName)
             }
             sendBroadcast(intent)
         }
+    }
+
+    private fun refreshClipboardList() {
+        val items = ClipboardRepository.loadItems(applicationContext)
+            .sortedByDescending { it.timestamp }
+        Logger.d("IMEService.refreshClipboardList: loaded ${items.size} items")
+        imeAdapter?.submitList(items)
+        val count = items.size
+        tvStatus?.text = if (count > 0) "📋 $count 条记录" else "📋 剪贴板监听"
     }
 
     override fun onCreate() {
@@ -64,6 +88,14 @@ class ClipboardInputMethodService : InputMethodService() {
         clipboardManager = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboardManager?.addPrimaryClipChangedListener(clipboardListener)
         Logger.d("IMEService: clipboard listener registered")
+        val filter = IntentFilter(ACTION_CLIPBOARD_UPDATED)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(clipboardUpdateReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(clipboardUpdateReceiver, filter)
+        }
+        Logger.d("IMEService: broadcast receiver registered")
     }
 
     override fun onCreateInputView(): View {
@@ -76,6 +108,13 @@ class ClipboardInputMethodService : InputMethodService() {
         val btnSwitchBack = view.findViewById<Button>(R.id.btnSwitchBack)
         val btnDelete = view.findViewById<Button>(R.id.btnDelete)
         tvStatus = view.findViewById<TextView>(R.id.tvImeStatus)
+        rvClipboard = view.findViewById<RecyclerView>(R.id.rvImeClipboard)
+
+        imeAdapter = ImeClipboardAdapter()
+        rvClipboard?.layoutManager = LinearLayoutManager(this)
+        rvClipboard?.adapter = imeAdapter
+
+        refreshClipboardList()
 
         btnClearClipboard.setOnClickListener {
             Logger.d("IMEService: clear system clipboard and all collected items")
@@ -83,6 +122,7 @@ class ClipboardInputMethodService : InputMethodService() {
             clipboardManager?.setPrimaryClip(clip)
             ClipboardRepository.clearAll(applicationContext)
             lastClipLabel = ""
+            imeAdapter?.submitList(emptyList())
             tvStatus?.text = "剪切板已清空"
             val intent = Intent(ACTION_CLIPBOARD_UPDATED).apply {
                 setPackage(packageName)
@@ -91,24 +131,34 @@ class ClipboardInputMethodService : InputMethodService() {
         }
 
         btnPasteLast.setOnClickListener {
-            Logger.d("IMEService: paste last clip, label=[$lastClipLabel]")
-            val clip = clipboardManager?.primaryClip
-            if (clip != null && clip.itemCount > 0) {
-                val text = clip.getItemAt(0).text?.toString()
-                    ?: clip.getItemAt(0).coerceToText(applicationContext).toString()
-                if (text.isNotEmpty()) {
-                    currentInputConnection?.commitText(text, 1)
-                }
+            Logger.d("IMEService: paste button clicked")
+            val selectedItems = imeAdapter?.getSelectedItems() ?: emptyList()
+            if (selectedItems.isNotEmpty()) {
+                val text = selectedItems
+                    .sortedByDescending { it.timestamp }
+                    .joinToString(separator = "\n") { it.content }
+                Logger.d("IMEService: pasting ${selectedItems.size} selected items, len=${text.length}")
+                currentInputConnection?.commitText(text, 1)
+                imeAdapter?.clearSelection()
+                tvStatus?.text = "✅ 已粘贴 ${selectedItems.size} 条"
             } else {
-                tvStatus?.text = "📋 No clip data (IME must be default)"
+                val items = imeAdapter?.getItems() ?: emptyList()
+                if (items.isNotEmpty()) {
+                    val latest = items[0].content
+                    Logger.d("IMEService: pasting latest item, len=${latest.length}")
+                    currentInputConnection?.commitText(latest, 1)
+                    tvStatus?.text = "✅ 已粘贴最新记录"
+                } else {
+                    tvStatus?.text = "📋 无记录"
+                }
             }
         }
 
         btnPasteAll.setOnClickListener {
             Logger.d("IMEService: paste ALL clips")
-            val items = ClipboardRepository.loadItems(applicationContext)
+            val items = imeAdapter?.getItems() ?: ClipboardRepository.loadItems(applicationContext)
             if (items.isEmpty()) {
-                Logger.d("IMEService: pasteAll - no items in repository")
+                Logger.d("IMEService: pasteAll - no items")
                 tvStatus?.text = "📋 No items collected yet"
                 return@setOnClickListener
             }
@@ -189,6 +239,12 @@ class ClipboardInputMethodService : InputMethodService() {
     override fun onDestroy() {
         Logger.d("========== ClipboardInputMethodService.onDestroy ==========")
         clipboardManager?.removePrimaryClipChangedListener(clipboardListener)
+        try {
+            unregisterReceiver(clipboardUpdateReceiver)
+            Logger.d("IMEService: broadcast receiver unregistered")
+        } catch (e: Exception) {
+            Logger.w("IMEService: unregister receiver failed: ${e.message}")
+        }
         super.onDestroy()
     }
 
