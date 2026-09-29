@@ -33,6 +33,7 @@ class ImeClipboardAdapter : RecyclerView.Adapter<ImeClipboardAdapter.ViewHolder>
         if (position in 0 until items.size) {
             items[position] = items[position].copy(isSelected = !items[position].isSelected)
             notifyItemChanged(position)
+            Logger.d("ImeAdapter.toggleSelection: pos=$position, selected=${items[position].isSelected}")
         }
     }
 
@@ -76,6 +77,7 @@ class ImeClipboardAdapter : RecyclerView.Adapter<ImeClipboardAdapter.ViewHolder>
         fun bind(item: ClipboardItem, position: Int) {
             tvContent.text = item.content
             tvContent.setOnClickListener {
+                Logger.d("ImeAdapter.itemClick: pos=$position, len=${item.content.length}")
                 onItemClickListener?.invoke(item)
             }
             checkBox.setOnCheckedChangeListener(null)
