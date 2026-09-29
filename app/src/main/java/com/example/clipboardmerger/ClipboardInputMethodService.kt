@@ -103,14 +103,12 @@ class ClipboardInputMethodService : InputMethodService() {
         Logger.d("IMEService.onCreateInputView")
         val view = layoutInflater.inflate(R.layout.ime_view, null)
 
-        view.post {
-            val screenHeight = resources.displayMetrics.heightPixels
-            val maxHeight = (screenHeight * 0.25).toInt()
-            val lp = view.layoutParams
-            lp.height = maxHeight
-            view.layoutParams = lp
-            Logger.d("IMEService.onCreateInputView.post: screenHeight=$screenHeight, maxHeight=$maxHeight")
-        }
+        val screenHeight = resources.displayMetrics.heightPixels
+        val maxHeight = (screenHeight * 0.25).toInt()
+        view.layoutParams = ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, maxHeight
+        )
+        Logger.d("IMEService.onCreateInputView: screenHeight=$screenHeight, maxHeight=$maxHeight")
 
         val btnClearClipboard = view.findViewById<Button>(R.id.btnClearClipboard)
         val btnPasteLast = view.findViewById<Button>(R.id.btnPasteLast)
@@ -121,6 +119,11 @@ class ClipboardInputMethodService : InputMethodService() {
         rvClipboard = view.findViewById<RecyclerView>(R.id.rvImeClipboard)
 
         imeAdapter = ImeClipboardAdapter()
+        imeAdapter?.onItemClickListener = { item ->
+            Logger.d("IMEService: item clicked, committing text len=${item.content.length}")
+            currentInputConnection?.commitText(item.content, 1)
+            tvStatus?.text = "✅ 已粘贴"
+        }
         rvClipboard?.layoutManager = LinearLayoutManager(this)
         rvClipboard?.adapter = imeAdapter
 

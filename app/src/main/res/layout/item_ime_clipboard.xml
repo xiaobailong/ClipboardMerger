@@ -6,26 +6,26 @@
     android:gravity="center_vertical"
     android:minHeight="28dp"
     android:orientation="horizontal"
-    android:paddingHorizontal="6dp"
+    android:paddingHorizontal="2dp"
     android:paddingVertical="0dp">
 
     <CheckBox
         android:id="@+id/cbImeItem"
-        android:layout_width="28dp"
-        android:layout_height="28dp"
-        android:buttonTint="#FF00E676"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:buttonTint="@color/checkbox_ime_tint"
         android:focusable="false"
-        android:minWidth="0dp"
-        android:minHeight="0dp"
-        android:padding="0dp" />
+        android:padding="2dp" />
 
     <TextView
         android:id="@+id/tvImeContent"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="2dp"
+        android:layout_marginStart="6dp"
         android:layout_weight="1"
+        android:clickable="true"
         android:ellipsize="none"
+        android:focusable="true"
         android:includeFontPadding="false"
         android:lineSpacingExtra="0dp"
         android:lineSpacingMultiplier="1.0"

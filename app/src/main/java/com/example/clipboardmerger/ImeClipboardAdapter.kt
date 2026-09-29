@@ -8,6 +8,8 @@ class ImeClipboardAdapter : RecyclerView.Adapter<ImeClipboardAdapter.ViewHolder>
 
     private val items = mutableListOf<ClipboardItem>()
 
+    var onItemClickListener: ((ClipboardItem) -> Unit)? = null
+
     fun submitList(newList: List<ClipboardItem>) {
         items.clear()
         items.addAll(newList)
@@ -73,6 +75,9 @@ class ImeClipboardAdapter : RecyclerView.Adapter<ImeClipboardAdapter.ViewHolder>
 
         fun bind(item: ClipboardItem, position: Int) {
             tvContent.text = item.content
+            tvContent.setOnClickListener {
+                onItemClickListener?.invoke(item)
+            }
             checkBox.setOnCheckedChangeListener(null)
             checkBox.isChecked = item.isSelected
             checkBox.setOnCheckedChangeListener { _, _ ->
