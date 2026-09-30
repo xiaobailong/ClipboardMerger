@@ -17,6 +17,9 @@
         android:id="@+id/action_reminder_settings"
         android:title="@string/settings_reminder" />
     <item
+        android:id="@+id/action_keep_alive"
+        android:title="@string/settings_keep_alive" />
+    <item
         android:id="@+id/action_about"
         android:title="@string/settings_about" />
 </menu>

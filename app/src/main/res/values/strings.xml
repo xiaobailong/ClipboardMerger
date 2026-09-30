@@ -93,6 +93,15 @@
     <string name="hide_notification_hint">开启后不再显示「剪集 后台监听中」那条通知，但后台服务照常运行（Android 要求前台服务必须有通知，这里用一条"不展示"的通知渠道实现）。个别机型可能因此缩短后台存活时间，若发现剪贴板不再收集，把它关掉即可。</string>
     <string name="hide_notification_on">常驻通知已隐藏</string>
     <string name="hide_notification_off">常驻通知已恢复显示</string>
+    <string name="settings_keep_alive">后台保活设置</string>
+    <string name="keep_alive_title">后台保活设置</string>
+    <string name="keep_alive_message">华为「一键清理」会把后台进程一起杀掉，且默认不会自动拉回来。App 已内置三处自救：①开机 / 应用更新后自动拉起；②从「最近任务」划掉后 1 秒自动拉起；③「剪集输入法」被系统启动时顺手把后台服务补起来。\n\n还需要你在系统里做三件事：\n1. 设置 → 应用 → 应用启动管理 → 剪集：关掉「自动管理」，改为手动管理并允许「自启动 / 关联启动 / 后台活动」；\n2. 「最近任务」里把剪集卡片下拉「加锁」（这样一键清理不会清掉它）；\n3. 允许「忽略电池优化」。\n\n注意：被系统「强行停止」后，Android 不允许任何 App 自拉起，只能手动点开一次剪集。</string>
+    <string name="keep_alive_status">当前忽略电池优化：%1$s</string>
+    <string name="keep_alive_yes">已允许</string>
+    <string name="keep_alive_no">未允许</string>
+    <string name="keep_alive_open_app_settings">打开应用信息</string>
+    <string name="keep_alive_ignore_battery">忽略电池优化</string>
+    <string name="keep_alive_already_ignored">已在忽略电池优化名单里</string>
     <string name="overlay_permission_title">悬浮提醒权限</string>
     <string name="overlay_permission_missing">当前未开启。\n\n华为 / 鸿蒙会拦掉通知横幅，开启「显示在其他应用上层」后，打开绑定的 App 时剪集会直接把切换提醒弹到前台（不用再去点通知）。\n\n设置路径：设置 → 应用 → 剪集 → 显示在其他应用上层</string>
     <string name="overlay_permission_granted">已开启 ✔\n\n打开绑定的 App 时，剪集会直接弹出切换提醒。</string>

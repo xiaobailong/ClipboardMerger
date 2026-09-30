@@ -94,6 +94,13 @@ class ClipboardService : Service() {
         return START_STICKY
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // 用户从「最近任务」划掉本应用：安排 1 秒后把后台服务拉回来（华为一键清理后也走这条路复活）
+        Logger.d("ClipboardService.onTaskRemoved: task removed, scheduling restart")
+        KeepAlive.scheduleRestart(this, 1_000L)
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
         Logger.d("========== ClipboardService.onDestroy ==========")
         BindAppBubble.hide()

@@ -18,6 +18,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.os.Process
 import android.provider.Settings
 import android.text.Editable
@@ -617,6 +618,10 @@ class MainActivity : AppCompatActivity() {
                     showReminderSettingsDialog()
                     true
                 }
+                R.id.action_keep_alive -> {
+                    showKeepAliveDialog()
+                    true
+                }
                 R.id.action_about -> {
                     showAboutDialog()
                     true
@@ -653,6 +658,62 @@ class MainActivity : AppCompatActivity() {
             .setView(dialogView)
             .setPositiveButton(android.R.string.ok, null)
             .show()
+    }
+
+    /** 后台保活说明：华为「一键清理」会连本应用一起杀，这里给出系统侧该开/该设的东西 */
+    private fun showKeepAliveDialog() {
+        Logger.d("Keep alive dialog: opened")
+        val ignoring = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            (getSystemService(Context.POWER_SERVICE) as PowerManager)
+                .isIgnoringBatteryOptimizations(packageName)
+        } else {
+            true
+        }
+        val message = getString(R.string.keep_alive_message) + "\n\n" + getString(
+            R.string.keep_alive_status,
+            getString(if (ignoring) R.string.keep_alive_yes else R.string.keep_alive_no)
+        )
+        AlertDialog.Builder(this)
+            .setTitle(R.string.keep_alive_title)
+            .setMessage(message)
+            .setPositiveButton(R.string.keep_alive_open_app_settings) { _, _ -> openAppDetailsSettings() }
+            .setNeutralButton(R.string.keep_alive_ignore_battery) { _, _ -> requestIgnoreBatteryOptimization() }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    /** 打开系统「应用信息」页：华为在这里设 应用启动管理（自启动 / 关联启动 / 后台活动） */
+    private fun openAppDetailsSettings() {
+        try {
+            startActivity(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
+            )
+            Logger.d("Keep alive: app details settings opened")
+        } catch (e: Exception) {
+            Logger.e("Keep alive: open app details failed: ${e.message}", e)
+        }
+    }
+
+    /** 申请「忽略电池优化」：Android 12+ 起这也顺带放开了“后台启动前台服务”的限制 */
+    private fun requestIgnoreBatteryOptimization() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        if (pm.isIgnoringBatteryOptimizations(packageName)) {
+            Toast.makeText(this, R.string.keep_alive_already_ignored, Toast.LENGTH_SHORT).show()
+            return
+        }
+        try {
+            startActivity(
+                Intent(
+                    Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    Uri.parse("package:$packageName")
+                )
+            )
+            Logger.d("Keep alive: request ignore battery optimizations")
+        } catch (e: Exception) {
+            Logger.e("Keep alive: request ignore battery failed: ${e.message}", e)
+            openAppDetailsSettings()
+        }
     }
 
     /** 「提醒设置」：悬浮提醒 / 后台监听服务（通知栏常驻通知）两个开关，拨动即生效并持久化 */

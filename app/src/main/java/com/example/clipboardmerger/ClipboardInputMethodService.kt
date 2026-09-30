@@ -86,6 +86,8 @@ class ClipboardInputMethodService : InputMethodService() {
     override fun onCreate() {
         super.onCreate()
         Logger.init(this)
+        // 剪集输入法被系统启动时，顺手把后台监听服务补起来（华为清理后最可靠的“复活点”）
+        KeepAlive.startServiceIfEnabled(this)
         Logger.d("========== ClipboardInputMethodService.onCreate ==========")
         clipboardManager = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboardManager?.addPrimaryClipChangedListener(clipboardListener)

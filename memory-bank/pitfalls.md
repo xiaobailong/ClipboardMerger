@@ -205,3 +205,16 @@
 - 反例: 继续在渠道重要性 / 声音 / 全屏 Intent 上调参（这些都在通知系统里，模式一开全废）；拿到悬浮权限只把它当“后台启动豁免”而不真的用它显示内容。
 - 自检: 手机切静音 + 开免打扰 → 进绑定 App → 应看到顶部悬浮气泡 + 一次振动（日志 `BindAppBubble: shown` + `vibrated reminder feedback`）。
 - 首次记录: 2026-10-01
+
+## PIT-033 华为「一键清理」杀掉后不自拉起：开了自启动也不等于自动复活
+- 触发条件: 华为/鸿蒙点「一键清理 / 手机加速」把后台清掉，本应用（含前台服务）一起被杀；用户已在系统里开了「自启动」。
+- 现象: 后台监控静默消失（日志停在被杀那一刻，之后再没有 `ClipboardService.onCreate`），绑定提醒再也不触发；用户以为“开了自启动就会自己回来”。
+- 正确做法（App 侧只能做到这些，按可靠性排序）:
+  ①**拿输入法当锚点**：`ClipboardInputMethodService.onCreate()` 里 `KeepAlive.startServiceIfEnabled()` —— 剪集本身是输入法，用户点任何输入框系统都会拉起输入法服务，这是最可靠的复活点；
+  ②**开机 / 应用更新**：`BootReceiver` 监听 `BOOT_COMPLETED` / `MY_PACKAGE_REPLACED`（需 `RECEIVE_BOOT_COMPLETED`）→ `startForegroundService`；
+  ③**从最近任务划掉**：`Service.onTaskRemoved()` 里用 `AlarmManager` + `PendingIntent.getForegroundService` 安排 1s 后自拉起（不要在回调里直接 startService，会被后台启动限制拦掉）；
+  ④**忽略电池优化**：`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` + `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`；Android 12+ 这同时放开“后台启动前台服务”的限制；
+  ⑤系统侧引导（App 里给用户看）：应用启动管理 → 手动管理（自启动 / 关联启动 / 后台活动）+ 最近任务卡片**下拉加锁**。
+- 反例: 以为“自启动 = 一定会自动回来”；以为 `START_STICKY` 能救一切（被 force-stop 或整进程被杀后不会回调）；在 `onTaskRemoved` 里直接 `startService`。
+- 自检: 一键清理后点一个输入框 → 日志应出现 `KeepAlive: background service start requested`，随后 `ClipboardService.onCreate` 与 `reminder gate reset` 再次出现。
+- 首次记录: 2026-10-01

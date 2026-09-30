@@ -139,4 +139,5 @@
 - 追加（2026-10-01 v1.87，用户追问“常驻通知能不能别一直显示”）: 平台约束 = **前台服务必须有一条通知**（Android 8+，无法只靠 API 去掉），所以给两条路：
   ①「后台监听服务」开关关掉 ⇒ 服务停、通知消失（代价见上）；②新增「**隐藏常驻通知**」开关（`hide_persistent_notification`）= 常驻通知改用 `IMPORTANCE_NONE` 的渠道（`clipboard_service_channel_hidden`）——
   通知记录照旧提交（`startForeground` 成立、服务不被杀），但系统不展示；渠道属性不可变 ⇒ 两条渠道 ID 二选一、切换时 `stopService` + 重新拉起服务重建渠道与通知。风险：个别 ROM 可能因“服务没有可见通知”缩短后台存活时间，因此做成用户可关的开关并在说明里点明“发现剪贴板不再收集就关掉它”。
+- 追加（2026-10-01 v1.88，用户反馈“一键清理后 App 不做自拉起，后台监控消失”）: 新增 `KeepAlive`（自拉起三件套：`BootReceiver` 开机/更新、`onTaskRemoved` + `AlarmManager` + `PendingIntent.getForegroundService`、输入法服务启动时补拉）+ 「更多 → 后台保活设置」（说明页 + 打开应用信息 + 申请忽略电池优化，`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`）。设计取舍：**把输入法服务当锚点**是最可靠的自救点（用户点输入框系统必然拉起剪集输入法），因此把"补拉后台服务"挂在它身上；被系统 force-stop 后不做无意义的轮询自拉起（Android 不允许），改为在说明页讲清系统侧该怎么设。
 

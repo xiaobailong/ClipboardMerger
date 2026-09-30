@@ -13,6 +13,8 @@
     <!-- 「显示在其他应用上层」：华为/鸿蒙会吞横幅，靠它才能直接把提醒卡片弹到前台（同时也是后台启动 Activity 的豁免条件） -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <queries>
         <intent>
@@ -53,6 +55,18 @@
             android:name=".ClipboardService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- 开机 / 应用更新后把后台监听服务拉回来（华为「一键清理」后的复活点之一） -->
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
 
         <service
             android:name=".ClipboardInputMethodService"
