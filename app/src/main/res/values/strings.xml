@@ -57,4 +57,13 @@
     <string name="ime_settings_description">选择一个输入法，用于 IME 键盘中「切换」按钮的目标输入法。点击「切换」时将直接跳转到此处选择的输入法。</string>
     <string name="ime_settings_none">不限（默认切换）</string>
     <string name="ime_settings_saved">输入法设置已保存</string>
+
+    <string name="settings_bind_app">绑定App</string>
+    <string name="bind_app_title">绑定应用</string>
+    <string name="bind_app_description">选择一个应用，当该应用处于前台且输入法未激活时，将自动弹出输入法切换提示。</string>
+    <string name="bind_app_none">不绑定（关闭）</string>
+    <string name="bind_app_saved">绑定应用已保存</string>
+    <string name="bind_app_status_bound">已绑定: %1$s</string>
+    <string name="bind_app_status_none">绑定App: 未设置</string>
+    <string name="bind_app_permission_required">需要「使用情况访问权限」才能检测前台应用，点击授权</string>
 </resources>

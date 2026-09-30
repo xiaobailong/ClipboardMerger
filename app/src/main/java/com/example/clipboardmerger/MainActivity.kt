@@ -1,6 +1,8 @@
 package com.example.clipboardmerger
 
 import android.app.AlertDialog
+import android.app.AppOpsManager
+import android.app.usage.UsageStatsManager
 import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -8,11 +10,13 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
 import android.graphics.Canvas
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.Process
 import android.provider.Settings
 import android.view.Menu
 import android.view.MenuItem
@@ -119,6 +123,7 @@ class MainActivity : AppCompatActivity() {
         registerClipboardListener()
         registerClipboardUpdateReceiver()
         setupIMEStatus()
+        setupBindAppStatus()
         startClipboardService()
 
         viewModel.reloadFromRepository()
@@ -139,6 +144,7 @@ class MainActivity : AppCompatActivity() {
         Logger.d("========== onResume ==========")
         viewModel.reloadFromRepository()
         setupIMEStatus()
+        setupBindAppStatus()
         scheduleClipboardRead()
         Logger.d("========== onResume finished ==========")
     }
@@ -586,6 +592,10 @@ class MainActivity : AppCompatActivity() {
                     showImeSettingsDialog()
                     true
                 }
+                R.id.action_bind_app -> {
+                    showBindAppDialog()
+                    true
+                }
                 R.id.action_about -> {
                     showAboutDialog()
                     true
@@ -727,8 +737,129 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun setupBindAppStatus() {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val label = prefs.getString(KEY_BOUND_APP_LABEL, "")
+        val tv = binding.tvBindAppStatus
+        if (!label.isNullOrBlank()) {
+            tv.text = getString(R.string.bind_app_status_bound, label)
+            tv.visibility = View.VISIBLE
+        } else {
+            tv.text = getString(R.string.bind_app_status_none)
+            tv.visibility = View.GONE
+        }
+    }
+
+    private fun isUsageStatsPermissionGranted(): Boolean {
+        val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            appOps.unsafeCheckOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                Process.myUid(),
+                packageName
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            appOps.checkOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                Process.myUid(),
+                packageName
+            )
+        }
+        return mode == AppOpsManager.MODE_ALLOWED
+    }
+
+    private fun requestUsageStatsPermission() {
+        Logger.d("BindApp: requesting usage stats permission")
+        AlertDialog.Builder(this)
+            .setTitle(R.string.bind_app_permission_required)
+            .setMessage("需要「使用情况访问权限」才能检测前台应用。\n\n请在接下来的设置页面中找到「剪集」并开启权限。")
+            .setPositiveButton("去授权") { _, _ ->
+                val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+                startActivity(intent)
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun showBindAppDialog() {
+        Logger.d("BindApp dialog: opened")
+        if (!isUsageStatsPermissionGranted()) {
+            Logger.d("BindApp dialog: usage stats permission not granted, requesting")
+            requestUsageStatsPermission()
+            return
+        }
+
+        val pm = packageManager
+        val mainIntent = Intent(Intent.ACTION_MAIN).apply { addCategory(Intent.CATEGORY_LAUNCHER) }
+        val activities = pm.queryIntentActivities(mainIntent, 0)
+        val appEntries = activities
+            .map { it.activityInfo }
+            .distinctBy { it.packageName }
+            .sortedBy { it.loadLabel(pm).toString().lowercase() }
+
+        Logger.d("BindApp dialog: found ${appEntries.size} launchable apps")
+
+        val appLabels = mutableListOf<String>()
+        val appPackages = mutableListOf<String>()
+
+        appLabels.add(getString(R.string.bind_app_none))
+        appPackages.add("")
+
+        for (info in appEntries) {
+            if (info.packageName == packageName) continue
+            appLabels.add(info.loadLabel(pm).toString())
+            appPackages.add(info.packageName)
+        }
+
+        val dialogView = layoutInflater.inflate(R.layout.dialog_bind_app, null)
+        val listView = dialogView.findViewById<ListView>(R.id.listBindApp)
+
+        val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_single_choice, appLabels)
+        listView.adapter = adapter
+
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val savedPackage = prefs.getString(KEY_BOUND_APP_PACKAGE, "") ?: ""
+        val savedIndex = appPackages.indexOf(savedPackage).coerceAtLeast(0)
+        Logger.d("BindApp dialog: restored savedPackage=[$savedPackage], index=$savedIndex")
+        listView.setItemChecked(savedIndex, true)
+        listView.setSelection(savedIndex)
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.bind_app_title)
+            .setView(dialogView)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val selectedPosition = listView.checkedItemPosition
+                Logger.d("BindApp dialog: OK clicked, checkedItemPosition=$selectedPosition")
+                if (selectedPosition >= 0 && selectedPosition < appPackages.size) {
+                    val selectedPackage = appPackages[selectedPosition]
+                    val selectedLabel = appLabels[selectedPosition]
+                    prefs.edit()
+                        .putString(KEY_BOUND_APP_PACKAGE, selectedPackage)
+                        .putString(KEY_BOUND_APP_LABEL, selectedLabel)
+                        .apply()
+                    Logger.d("BindApp dialog: saved package=[$selectedPackage], label=[$selectedLabel]")
+                    setupBindAppStatus()
+                    Toast.makeText(this, R.string.bind_app_saved, Toast.LENGTH_SHORT).show()
+                } else {
+                    Logger.w("BindApp dialog: invalid selectedPosition=$selectedPosition, no save")
+                }
+            }
+            .setNegativeButton(android.R.string.cancel) { _, _ ->
+                Logger.d("BindApp dialog: cancelled, no changes saved")
+            }
+            .show()
+
+        listView.onItemClickListener = AdapterView.OnItemClickListener { _, _, position, _ ->
+            Logger.d("BindApp dialog: list item clicked position=$position, label=[${appLabels[position]}]")
+            listView.setItemChecked(position, true)
+        }
+    }
+
     companion object {
         const val PREFS_NAME = "clipboard_merger_settings"
         const val KEY_TARGET_IME = "target_ime_id"
+        const val KEY_BOUND_APP_PACKAGE = "bound_app_package"
+        const val KEY_BOUND_APP_LABEL = "bound_app_label"
     }
 }
