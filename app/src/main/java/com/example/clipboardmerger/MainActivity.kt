@@ -2,6 +2,7 @@ package com.example.clipboardmerger
 
 import android.app.AlertDialog
 import android.app.AppOpsManager
+import android.app.NotificationManager
 import android.app.usage.UsageStatsManager
 import android.content.BroadcastReceiver
 import android.content.ClipData
@@ -19,6 +20,8 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Process
 import android.provider.Settings
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
@@ -376,6 +379,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startClipboardService() {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(KEY_BACKGROUND_SERVICE_ENABLED, true)) {
+            Logger.d("startClipboardService: background service disabled by user, skip")
+            return
+        }
         Logger.d("startClipboardService: start")
         val intent = Intent(this, ClipboardService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -605,6 +613,10 @@ class MainActivity : AppCompatActivity() {
                     showOverlayPermissionDialog()
                     true
                 }
+                R.id.action_reminder_settings -> {
+                    showReminderSettingsDialog()
+                    true
+                }
                 R.id.action_about -> {
                     showAboutDialog()
                     true
@@ -638,6 +650,77 @@ class MainActivity : AppCompatActivity() {
 
         AlertDialog.Builder(this)
             .setTitle(R.string.settings_log_title)
+            .setView(dialogView)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    /** 「提醒设置」：悬浮提醒 / 后台监听服务（通知栏常驻通知）两个开关，拨动即生效并持久化 */
+    private fun showReminderSettingsDialog() {
+        Logger.d("Reminder settings dialog: opened")
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val dialogView = layoutInflater.inflate(R.layout.dialog_reminder_settings, null)
+        val switchReminder = dialogView.findViewById<SwitchCompat>(R.id.switchReminderEnabled)
+        val switchService = dialogView.findViewById<SwitchCompat>(R.id.switchBackgroundService)
+
+        switchReminder.isChecked = prefs.getBoolean(KEY_REMINDER_ENABLED, true)
+        switchService.isChecked = prefs.getBoolean(KEY_BACKGROUND_SERVICE_ENABLED, true)
+
+        // 拨动即生效并持久化：不依赖“确定”按钮，进程重启后依然生效
+        switchReminder.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean(KEY_REMINDER_ENABLED, isChecked).apply()
+            Logger.d("Reminder settings: reminder enabled=$isChecked")
+            if (!isChecked) {
+                BindAppBubble.hide()
+                try {
+                    (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                        .cancel(ClipboardService.BIND_NOTIFICATION_ID)
+                } catch (e: Exception) {
+                    Logger.w("Reminder settings: cancel reminder notification failed: ${e.message}")
+                }
+            }
+            Toast.makeText(
+                this,
+                if (isChecked) R.string.reminder_on else R.string.reminder_off,
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+
+        val switchHideNotification = dialogView.findViewById<SwitchCompat>(R.id.switchHidePersistentNotification)
+        switchHideNotification.isChecked = prefs.getBoolean(KEY_HIDE_PERSISTENT_NOTIFICATION, false)
+        switchHideNotification.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean(KEY_HIDE_PERSISTENT_NOTIFICATION, isChecked).apply()
+            Logger.d("Reminder settings: hide persistent notification=$isChecked")
+            // 渠道属性不可变 ⇒ 改这条要重启服务来重建渠道与常驻通知（仅当后台服务是开着的时候）
+            if (prefs.getBoolean(KEY_BACKGROUND_SERVICE_ENABLED, true)) {
+                stopService(Intent(this, ClipboardService::class.java))
+                startClipboardService()
+            }
+            Toast.makeText(
+                this,
+                if (isChecked) R.string.hide_notification_on else R.string.hide_notification_off,
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+
+        switchService.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean(KEY_BACKGROUND_SERVICE_ENABLED, isChecked).apply()
+            Logger.d("Reminder settings: background service enabled=$isChecked")
+            if (isChecked) {
+                startClipboardService()
+            } else {
+                stopService(Intent(this, ClipboardService::class.java))
+                BindAppBubble.hide()
+            }
+            Toast.makeText(
+                this,
+                if (isChecked) R.string.background_service_on else R.string.background_service_off,
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle(R.string.reminder_settings_title)
             .setView(dialogView)
             .setPositiveButton(android.R.string.ok, null)
             .show()
@@ -812,32 +895,61 @@ class MainActivity : AppCompatActivity() {
             .distinctBy { it.packageName }
             .sortedBy { it.loadLabel(pm).toString().lowercase() }
 
-        Logger.d("BindApp dialog: found ${appEntries.size} launchable apps")
-
-        val appLabels = mutableListOf<String>()
-        val appPackages = mutableListOf<String>()
-
-        appLabels.add(getString(R.string.bind_app_none))
-        appPackages.add("")
-
+        // 第 0 条固定是「不绑定（关闭）」；searchKey = 应用名 + 包名（均小写），供搜索框过滤
+        val allLabels = mutableListOf<String>()
+        val allPackages = mutableListOf<String>()
+        val allSearchKeys = mutableListOf<String>()
+        allLabels.add(getString(R.string.bind_app_none))
+        allPackages.add("")
+        allSearchKeys.add("")
         for (info in appEntries) {
             if (info.packageName == packageName) continue
-            appLabels.add(info.loadLabel(pm).toString())
-            appPackages.add(info.packageName)
+            val label = info.loadLabel(pm).toString()
+            allLabels.add(label)
+            allPackages.add(info.packageName)
+            allSearchKeys.add("$label ${info.packageName}".lowercase())
         }
+        Logger.d("BindApp dialog: found ${appEntries.size} launchable apps, selectable=${allLabels.size - 1}")
 
         val dialogView = layoutInflater.inflate(R.layout.dialog_bind_app, null)
         val listView = dialogView.findViewById<ListView>(R.id.listBindApp)
+        val searchBox = dialogView.findViewById<EditText>(R.id.etBindAppSearch)
 
-        val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_single_choice, appLabels)
+        val shownLabels = mutableListOf<String>()
+        val shownPackages = mutableListOf<String>()
+        val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_single_choice, shownLabels)
         listView.adapter = adapter
 
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val savedPackage = prefs.getString(KEY_BOUND_APP_PACKAGE, "") ?: ""
-        val savedIndex = appPackages.indexOf(savedPackage).coerceAtLeast(0)
-        Logger.d("BindApp dialog: restored savedPackage=[$savedPackage], index=$savedIndex")
-        listView.setItemChecked(savedIndex, true)
-        listView.setSelection(savedIndex)
+        var pendingPackage = savedPackage
+
+        /** 按关键字重建列表（应用名 / 包名都匹配；「不绑定（关闭）」始终保留） */
+        fun applyFilter(keyword: String) {
+            val kw = keyword.trim().lowercase()
+            shownLabels.clear()
+            shownPackages.clear()
+            for (i in allLabels.indices) {
+                if (i == 0 || kw.isEmpty() || allSearchKeys[i].contains(kw)) {
+                    shownLabels.add(allLabels[i])
+                    shownPackages.add(allPackages[i])
+                }
+            }
+            adapter.notifyDataSetChanged()
+            val index = shownPackages.indexOf(pendingPackage).coerceAtLeast(0)
+            listView.setItemChecked(index, true)
+            listView.setSelection(index)
+            Logger.d("BindApp dialog: filter=[$kw], shown=${shownLabels.size}, checked=$index")
+        }
+        applyFilter("")
+
+        searchBox.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+            override fun afterTextChanged(s: Editable?) {
+                applyFilter(s?.toString().orEmpty())
+            }
+        })
 
         val dialog = AlertDialog.Builder(this)
             .setTitle(R.string.bind_app_title)
@@ -845,9 +957,9 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton(android.R.string.ok) { _, _ ->
                 val selectedPosition = listView.checkedItemPosition
                 Logger.d("BindApp dialog: OK clicked, checkedItemPosition=$selectedPosition")
-                if (selectedPosition >= 0 && selectedPosition < appPackages.size) {
-                    val selectedPackage = appPackages[selectedPosition]
-                    val selectedLabel = appLabels[selectedPosition]
+                if (selectedPosition >= 0 && selectedPosition < shownPackages.size) {
+                    val selectedPackage = shownPackages[selectedPosition]
+                    val selectedLabel = shownLabels[selectedPosition]
                     prefs.edit()
                         .putString(KEY_BOUND_APP_PACKAGE, selectedPackage)
                         .putString(KEY_BOUND_APP_LABEL, selectedLabel)
@@ -866,12 +978,13 @@ class MainActivity : AppCompatActivity() {
             .show()
 
         listView.onItemClickListener = AdapterView.OnItemClickListener { _, _, position, _ ->
-            Logger.d("BindApp dialog: list item clicked position=$position, label=[${appLabels[position]}]")
+            val label = if (position < shownLabels.size) shownLabels[position] else "?"
+            Logger.d("BindApp dialog: list item clicked position=$position, label=[$label]")
             listView.setItemChecked(position, true)
+            if (position < shownPackages.size) pendingPackage = shownPackages[position]
         }
     }
 
-    /** 华为 / 鸿蒙会吞通知横幅：没有「显示在其他应用上层」权限时提示用户去开（开了才能自动把提醒卡片弹到前台） */
     /** 「悬浮提醒权限」入口（更多菜单）：显示当前状态 + 跳系统授权页 */
     private fun showOverlayPermissionDialog() {
         val granted = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)
@@ -935,5 +1048,14 @@ class MainActivity : AppCompatActivity() {
         const val KEY_TARGET_IME = "target_ime_id"
         const val KEY_BOUND_APP_PACKAGE = "bound_app_package"
         const val KEY_BOUND_APP_LABEL = "bound_app_label"
+
+        /** 悬浮提醒（气泡 + 振动 + 提醒通知）总开关 */
+        const val KEY_REMINDER_ENABLED = "bind_app_reminder_enabled"
+
+        /** 后台监听服务开关（前台服务常驻通知随之显示/消失） */
+        const val KEY_BACKGROUND_SERVICE_ENABLED = "background_service_enabled"
+
+        /** 隐藏常驻通知（后台服务继续跑，只是不再显示那条通知） */
+        const val KEY_HIDE_PERSISTENT_NOTIFICATION = "hide_persistent_notification"
     }
 }

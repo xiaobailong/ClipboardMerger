@@ -13,6 +13,17 @@
         android:textSize="13sp"
         android:layout_marginBottom="12dp" />
 
+    <EditText
+        android:id="@+id/etBindAppSearch"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:hint="@string/bind_app_search_hint"
+        android:importantForAutofill="no"
+        android:inputType="text"
+        android:maxLines="1"
+        android:textSize="14sp" />
+
     <ListView
         android:id="@+id/listBindApp"
         android:layout_width="match_parent"

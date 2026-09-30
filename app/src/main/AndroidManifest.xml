@@ -12,6 +12,7 @@
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <!-- 「显示在其他应用上层」：华为/鸿蒙会吞横幅，靠它才能直接把提醒卡片弹到前台（同时也是后台启动 Activity 的豁免条件） -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <queries>
         <intent>

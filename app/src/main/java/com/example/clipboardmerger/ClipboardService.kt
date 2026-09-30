@@ -18,6 +18,9 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.Process
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
 
@@ -81,28 +84,53 @@ class ClipboardService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Logger.d("ClipboardService.onStartCommand: flags=$flags, startId=$startId")
+        // 用户在「提醒设置」里关掉后台监听服务后，任何残留的启动请求都不再把它拉起来（常驻通知随之消失）
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(MainActivity.KEY_BACKGROUND_SERVICE_ENABLED, true)) {
+            Logger.d("ClipboardService.onStartCommand: background service disabled by user, stopSelf")
+            stopSelf()
+            return START_NOT_STICKY
+        }
         return START_STICKY
     }
 
     override fun onDestroy() {
         Logger.d("========== ClipboardService.onDestroy ==========")
+        BindAppBubble.hide()
         stopForegroundAppCheck()
         clipboardManager?.removePrimaryClipChangedListener(clipboardListener)
         super.onDestroy()
     }
 
+    /** 常驻通知用哪条渠道：用户在提醒设置里选了“隐藏常驻通知”就用 IMPORTANCE_NONE 那条 */
+    private fun serviceChannelId(): String {
+        val hidden = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(MainActivity.KEY_HIDE_PERSISTENT_NOTIFICATION, false)
+        return if (hidden) HIDDEN_CHANNEL_ID else CHANNEL_ID
+    }
+
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = getSystemService(NotificationManager::class.java)
+
+            // 常驻通知渠道：默认 IMPORTANCE_MIN（无状态栏图标、抽屉里最底部那一条）；
+            // 用户嫌“一直显示”时切到 IMPORTANCE_NONE —— 通知记录照旧提交（前台服务身份成立、服务不会被杀），
+            // 但系统不再展示它。渠道属性创建后不可变 ⇒ 两条 ID 二选一，把不用的那条删掉。
+            val hidden = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getBoolean(MainActivity.KEY_HIDE_PERSISTENT_NOTIFICATION, false)
+            val channelId = serviceChannelId()
+            manager.deleteNotificationChannel(if (hidden) CHANNEL_ID else HIDDEN_CHANNEL_ID)
+
             val channel = NotificationChannel(
-                CHANNEL_ID,
+                channelId,
                 "后台服务",
-                NotificationManager.IMPORTANCE_MIN
+                if (hidden) NotificationManager.IMPORTANCE_NONE else NotificationManager.IMPORTANCE_MIN
             ).apply {
-                description = "剪集后台监听中"
+                description = if (hidden) "已隐藏（后台监听仍在运行）" else "剪集后台监听中"
                 setShowBadge(false)
             }
             manager.createNotificationChannel(channel)
+            Logger.d("ClipboardService: service channel=$channelId, hidden=$hidden")
 
             // 渠道属性创建后不可变：v1.77 的老渠道没开振动，v2 又**没有声音** ——
             // 华为/鸿蒙把“无声音”的渠道按“静默通知”处理，不给悬浮横幅（实测 importance=4 仍不弹）。
@@ -148,7 +176,7 @@ class ClipboardService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(this, CHANNEL_ID)
+            Notification.Builder(this, serviceChannelId())
                 .setContentTitle("剪集")
                 .setContentText("后台监听中")
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
@@ -192,6 +220,14 @@ class ClipboardService : Service() {
 
     private fun checkForegroundApp() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+        // 提醒总开关（「提醒设置」里可关）：关闭后既不出气泡，也不再发提醒通知，并把已发出的撤掉
+        if (!prefs.getBoolean(MainActivity.KEY_REMINDER_ENABLED, true)) {
+            BindAppBubble.hide()
+            cancelReminderNotification()
+            return
+        }
+
         val boundPackage = prefs.getString(KEY_BOUND_APP_PACKAGE, "") ?: ""
         if (boundPackage.isEmpty()) {
             Logger.d("ClipboardService.checkForegroundApp: no bound app, skip")
@@ -222,6 +258,7 @@ class ClipboardService : Service() {
             if (lastForegroundPackage == boundPackage) {
                 Logger.d("ClipboardService: bound app left foreground, next entry will remind again")
             }
+            BindAppBubble.hide()
             lastForegroundPackage = foregroundPkg
             return
         }
@@ -244,88 +281,126 @@ class ClipboardService : Service() {
 
         try {
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            val appName = try {
-                packageManager.getApplicationLabel(
-                    packageManager.getApplicationInfo(boundPackage, 0)
-                ).toString()
-            } catch (e: Exception) {
-                boundPackage
-            }
+            val appName = resolveAppName(boundPackage)
 
-            // 先试“直接把提醒卡片弹出来”（已授予「显示在其他应用上层」时才可行），
-            // 通知照旧发一份（抽屉里留个入口 + 全屏 Intent 兜底）
-            val directLaunched = tryLaunchReminderActivity(appName)
-
-            val pickerIntent = Intent(this, PickerActivity::class.java)
-            pickerIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            pickerIntent.putExtra(PickerActivity.EXTRA_APP_NAME, appName)
-            val pendingIntent = PendingIntent.getActivity(
-                this, 1,
-                pickerIntent,
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-            )
-
-            val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                Notification.Builder(this, BIND_CHANNEL_ID)
-                    .setContentTitle("切换到剪集输入法")
-                    .setContentText("$appName 正在运行，点击切换")
-                    .setSmallIcon(android.R.drawable.ic_dialog_info)
-                    .setContentIntent(pendingIntent)
-                    .setAutoCancel(true)
-                    .setCategory(Notification.CATEGORY_MESSAGE)
-                    .setVisibility(Notification.VISIBILITY_PUBLIC)
-                    // 全屏 Intent：设备正在使用时会退化成“悬浮横幅”，息屏 / 锁屏时直接拉起提醒页。
-                    // 只发普通通知时（v1.77~v1.79）提醒只会进抽屉，用户在华为上根本看不到（ISSUE-007）。
-                    .setFullScreenIntent(pendingIntent, true)
-                    .build()
+            if (BindAppBubble.canShow(this)) {
+                // 静音 / 振动 / 免打扰下通知横幅会被系统整个吞掉 ⇒ 改走自绘悬浮窗（不经过通知系统）
+                showBubbleReminder(appName)
             } else {
-                @Suppress("DEPRECATION")
-                Notification.Builder(this)
-                    .setContentTitle("切换到剪集输入法")
-                    .setContentText("$appName 正在运行，点击切换")
-                    .setSmallIcon(android.R.drawable.ic_dialog_info)
-                    .setContentIntent(pendingIntent)
-                    .setAutoCancel(true)
-                    .setPriority(Notification.PRIORITY_HIGH)
-                    .setDefaults(Notification.DEFAULT_VIBRATE)
-                    .build()
+                Logger.w("ClipboardService: overlay permission NOT granted, falling back to notification")
+                sendReminderNotification(nm, appName)
             }
-            nm.notify(BIND_NOTIFICATION_ID, notification)
-            Logger.d("ClipboardService: bind app notification sent for [$appName], directLaunch=$directLaunched")
         } catch (e: Exception) {
-            Logger.e("ClipboardService: failed to send notification: ${e.message}", e)
+            Logger.e("ClipboardService: failed to show reminder: ${e.message}", e)
+        }
+    }
+
+    /** 撤掉“提醒”那条通知（关掉提醒开关、或改走悬浮气泡时） */
+    private fun cancelReminderNotification() {
+        try {
+            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                .cancel(BIND_NOTIFICATION_ID)
+        } catch (e: Exception) {
+            Logger.w("ClipboardService: cancel reminder notification failed: ${e.message}")
         }
     }
 
     /**
-     * 直接把提醒卡片拉起来 —— 不再只依赖系统通知横幅。
+     * 悬浮提醒（**静音 / 振动 / 免打扰下依然可见**）。
      *
-     * 华为 / 鸿蒙会吞掉横幅（实测 importance=4 也不弹），用户只能自己去抽屉里找通知；
-     * 所以当**已授予「显示在其他应用上层」(SYSTEM_ALERT_WINDOW)** 时直接 startActivity：
-     * 该权限同时也是“后台启动 Activity”的豁免条件，能绕开 BAL 限制。
-     * 没授权时不硬来（会被系统静默拦掉），只发通知，并在日志里写明原因。
+     * 华为/鸿蒙在静音、振动、免打扰三种状态下会把通知横幅整个吞掉（实测 `importance=4` + 有声音也没用），
+     * 而 `TYPE_APPLICATION_OVERLAY` 是应用自绘窗口，完全不经过通知系统 ⇒ 这几种模式下都能看到。
+     * 点气泡才打开提醒页（用户主动点击，不依赖后台启动豁免），比“自动弹窗”也更不打扰。
      */
-    private fun tryLaunchReminderActivity(appName: String): Boolean {
-        val canDrawOverlays =
-            Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)
-        if (!canDrawOverlays) {
-            Logger.w(
-                "ClipboardService: overlay permission NOT granted, only notification is sent " +
-                    "(去「设置 → 应用 → 剪集 → 显示在其他应用上层」开启后就能直接弹提醒)"
-            )
-            return false
-        }
-        return try {
-            val intent = Intent(this, PickerActivity::class.java)
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            intent.putExtra(PickerActivity.EXTRA_APP_NAME, appName)
-            startActivity(intent)
-            Logger.d("ClipboardService: PickerActivity launched directly (overlay permission granted)")
-            true
+    private fun showBubbleReminder(appName: String) {
+        BindAppBubble.hide()
+        cancelReminderNotification()
+        BindAppBubble.show(
+            context = this,
+            text = getString(R.string.bind_app_bubble_text, appName),
+            onClick = {
+                Logger.d("ClipboardService: overlay bubble clicked, opening reminder page")
+                BindAppBubble.hide()
+                try {
+                    val intent = Intent(this, PickerActivity::class.java)
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    intent.putExtra(PickerActivity.EXTRA_APP_NAME, appName)
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    Logger.e("ClipboardService: open reminder page failed: ${e.message}", e)
+                }
+            },
+            onClose = { BindAppBubble.hide() }
+        )
+        vibrateReminder()
+    }
+
+    /** 提醒时直接振一下（走 Vibrator，不经过通知系统，静音/振动模式下也能被感知） */
+    private fun vibrateReminder() {
+        try {
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                (getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            }
+            if (vibrator.hasVibrator()) {
+                vibrator.vibrate(VibrationEffect.createOneShot(300L, VibrationEffect.DEFAULT_AMPLITUDE))
+                Logger.d("ClipboardService: vibrated reminder feedback")
+            }
         } catch (e: Exception) {
-            Logger.e("ClipboardService: direct launch failed: ${e.message}", e)
-            false
+            Logger.w("ClipboardService: vibrate failed: ${e.message}")
         }
+    }
+
+    /** 取绑定 App 的显示名（取不到就用包名） */
+    private fun resolveAppName(pkg: String): String = try {
+        packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
+    } catch (e: Exception) {
+        pkg
+    }
+
+    /** 没有悬浮窗权限时的兜底：高重要性通知（含全屏 Intent） */
+    private fun sendReminderNotification(nm: NotificationManager, appName: String) {
+        val pickerIntent = Intent(this, PickerActivity::class.java)
+        pickerIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        pickerIntent.putExtra(PickerActivity.EXTRA_APP_NAME, appName)
+        val pendingIntent = PendingIntent.getActivity(
+            this, 1,
+            pickerIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, BIND_CHANNEL_ID)
+                .setContentTitle("切换到剪集输入法")
+                .setContentText("$appName 正在运行，点击切换")
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .setCategory(Notification.CATEGORY_MESSAGE)
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
+                // 全屏 Intent：设备正在使用时会退化成“悬浮横幅”，息屏 / 锁屏时直接拉起提醒页。
+                // 只发普通通知时（v1.77~v1.79）提醒只会进抽屉，用户在华为上根本看不到（ISSUE-007）。
+                .setFullScreenIntent(pendingIntent, true)
+                .build()
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+                .setContentTitle("切换到剪集输入法")
+                .setContentText("$appName 正在运行，点击切换")
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .setPriority(Notification.PRIORITY_HIGH)
+                .setDefaults(Notification.DEFAULT_VIBRATE)
+                .build()
+        }
+        nm.notify(BIND_NOTIFICATION_ID, notification)
+        Logger.d(
+            "ClipboardService: bind app notification sent for [$appName] " +
+                "(no overlay permission: 静音/免打扰下可能看不到，建议开启「悬浮提醒权限」)"
+        )
     }
 
     private fun getForegroundPackage(): String? {
@@ -391,11 +466,14 @@ class ClipboardService : Service() {
         // 同一次“进入绑定 App”只提醒一次；相邻两次提醒的最短间隔（防抖动）
         private const val PICKER_MIN_INTERVAL_MS = 15_000L
         private const val CHANNEL_ID = "clipboard_service_channel"
+
+        /** 隐藏版常驻通知渠道（IMPORTANCE_NONE：不展示，但前台服务身份成立） */
+        private const val HIDDEN_CHANNEL_ID = "clipboard_service_channel_hidden"
         private const val NOTIFICATION_ID = 1
         // 渠道 ID 换新（属性创建后不可变：v2 没有声音 ⇒ 华为按“静默通知”处理，不给横幅，见 ISSUE-007）
         private const val BIND_CHANNEL_ID = "bind_app_channel_v3"
         private const val LEGACY_BIND_CHANNEL_ID = "bind_app_channel"
         private const val LEGACY_BIND_CHANNEL_ID_V2 = "bind_app_channel_v2"
-        private const val BIND_NOTIFICATION_ID = 2
+        const val BIND_NOTIFICATION_ID = 2
     }
 }

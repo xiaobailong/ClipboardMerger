@@ -193,7 +193,15 @@
 ## PIT-031 华为/鸿蒙：通知渠道「没有声音」⇒ 永远没有悬浮横幅（importance=HIGH 也没用）
 - 触发条件: 自建 `NotificationChannel` 只 `enableVibration(true)`、没 `setSound(...)`（渠道默认无声音）。
 - 现象: 通知能进抽屉、`areNotificationsEnabled()=true`、`importance=4`、`shouldVibrate=false`，但**从不出横幅**（v1.82 真机日志原文：`notificationsEnabled=true, bindChannel=bind_app_channel_v2, importance=4, shouldVibrate=false`）。EMUI 把无声音渠道当“静默通知”。
-- 正确做法: 渠道必须带声音 —— `setSound(RingtoneManager.getDefaultUri(TYPE_NOTIFICATION), AudioAttributes(USAGE_NOTIFICATION))`；渠道属性不可变 ⇒ **换新 ID**（本项目 `bind_app_channel_v3`，同时删掉 v1/v2）。并且别把“能不能看到提醒”全押在横幅上：更硬的兜底是申请 `SYSTEM_ALERT_WINDOW`（显示在其他应用上层）后**直接 `startActivity` 把提醒页拉起**（该权限同时也是后台启动 Activity 的豁免条件）。
+- 正确做法: 渠道必须带声音 —— `setSound(RingtoneManager.getDefaultUri(TYPE_NOTIFICATION), AudioAttributes(USAGE_NOTIFICATION))`；渠道属性不可变 ⇒ **换新 ID**（本项目 `bind_app_channel_v3`，同时删掉 v1/v2）。并且别把“能不能看到提醒”全押在横幅上：更硬的办法是**绕开通知系统**：申请 `SYSTEM_ALERT_WINDOW`（显示在其他应用上层）后自绘悬浮气泡 + 直接调 `Vibrator`（见 `PIT-032`）。
 - 反例: 只调 `IMPORTANCE_HIGH` + 振动就以为有横幅；对同一个渠道 ID 反复 `delete` + 重建（v1.79 实测无效）。
 - 自检: 启动日志 `hasSound=${channel.sound != null}`（期望 true）+ 真机亮屏/锁屏各验一次横幅。
+- 首次记录: 2026-10-01
+
+## PIT-032 静音 / 振动 / 免打扰下通知横幅整条消失 ⇒ 提醒必须绕开通知系统（自绘悬浮窗 + 直接振动）
+- 触发条件: 把“提醒用户”设计成通知横幅（哪怕 `IMPORTANCE_HIGH` + 有声音 + 振动 + 全屏 Intent），而设备处于**静音 / 振动 / 免打扰**（华为/鸿蒙实测）。
+- 现象: 通知只进抽屉、甚至完全不显示（`notificationsEnabled=true`、`importance=4`、`hasSound=true` 都没用）⇒ 用户永远看不到提醒。
+- 正确做法: ①申请 `SYSTEM_ALERT_WINDOW`（显示在其他应用上层），用 `WindowManager` + `TYPE_APPLICATION_OVERLAY` 画自绘气泡，带 `FLAG_NOT_FOCUSABLE`（不抢焦点、不影响用户在别的 App 里打字）；②提醒时直接 `Vibrator` 振一下（`VibrationEffect.createOneShot(300L, DEFAULT_AMPLITUDE)`，不经过通知系统）；③通知降级为“没有悬浮权限时”的兜底，并在日志里写明原因。
+- 反例: 继续在渠道重要性 / 声音 / 全屏 Intent 上调参（这些都在通知系统里，模式一开全废）；拿到悬浮权限只把它当“后台启动豁免”而不真的用它显示内容。
+- 自检: 手机切静音 + 开免打扰 → 进绑定 App → 应看到顶部悬浮气泡 + 一次振动（日志 `BindAppBubble: shown` + `vibrated reminder feedback`）。
 - 首次记录: 2026-10-01

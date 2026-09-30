@@ -8,6 +8,9 @@
 
 在设置中新增"绑定App"功能。用户选择一个应用（如"抖音"），当该应用在前台运行且剪集输入法未被激活时，自动弹出输入法切换提醒。
 
+> v1.85 起提醒改走**自绘悬浮气泡**（`BindAppBubble`，静音 / 振动 / 免打扰下同样可见）+ 直接振动；
+> v1.86 起「更多 → 提醒设置」提供两个开关（**悬浮提醒** / **后台监听服务**），绑定 App 列表带**搜索框**（应用名 / 包名）。
+
 ### 1.1 用户操作流程
 1. 设置 → 绑定App → 弹出应用列表弹窗（全量已安装应用）
 2. 单选目标应用（如"抖音"）
@@ -109,16 +112,30 @@ v1.79 对**同一 ID** `deleteNotificationChannel` + 重建，实测都无效（
 > （提交 `dfd9e7d` 未包含这两个文件），下一次构建直接报 `Unresolved reference: activity_picker`（见 `PIT-030`）；
 > 已补齐，并改用递增版本号出包（`v1.82` / build 83）以便和线上 v1.79 / v1.80 区分。
 
+> 2026-10-01 补记（v1.84 / v1.85）：①v1.84 起提醒页**默认完全不可见**，只留"系统输入法选择器"一层，
+> 选择器 1.6s 内没弹出来才显示兜底卡片（修掉用户反馈的"两层弹框"）；②v1.85 起「提醒」主通道改成
+> **自绘悬浮气泡**（`BindAppBubble`）+ 直接 `Vibrator` 振动 —— 因为华为在**静音 / 振动 / 免打扰**下
+> 会把通知横幅整条吞掉（`PIT-032`）；通知降级为"没有悬浮权限时"的兜底，入口在「更多 → 悬浮提醒权限」。
+
+> 2026-10-01 补记（v1.86）：新增「更多 → **提醒设置**」（`dialog_reminder_settings.xml`）：**悬浮提醒**开关（关掉彻底不再提示）
+> 与**后台监听服务**开关（关掉 ⇒ `stopService` ⇒ 通知栏的常驻通知消失；代价是后台剪贴板监听与悬浮提醒停止，剪贴板改由剪集输入法面板负责）。
+> 绑定 App 列表加了**搜索框** `etBindAppSearch`（应用名 / 包名匹配）。
+
+> 2026-10-01 补记（v1.87）：新增第三个开关「**隐藏常驻通知**」——常驻通知改用 `IMPORTANCE_NONE` 渠道（`clipboard_service_channel_hidden`），
+> 通知仍会提交（前台服务成立）但不展示；切换时 `stopService` + 重新拉起以重建渠道。平台事实：Android 8+ 前台服务必须挂通知，
+> 想彻底不显示只有两条路 —— 关后台服务（`background_service_enabled`）或隐藏通知渠道（本开关）。
+
 ### 4.3 真机验证步骤（下次照做）
 
 1. 安装新包 → 打开剪集 → 设置 → 绑定App → 选抖音（确认「使用情况访问权限」已开；保存后会弹「开启悬浮提醒权限」→ 点「去开启」把「显示在其他应用上层」打开）
-2. 打开抖音：**期望**只弹出一层「系统输入法选择器」（v1.84 起提醒页默认不可见）；选择器被拦时才会显示兜底卡片
-   - 想免点通知：装完先到「更多 → 悬浮提醒权限 → 去开启」，打开后再进抖音就是**自动弹提醒**
+2. 打开抖音：**期望**顶部出现**悬浮气泡**「抖音 正在运行 · 点这里切到「剪集」输入法」+ 一次振动（静音/振动/免打扰下同样可见）
+   - 点气泡 → 只弹出一层「系统输入法选择器」；选择器被拦时才会显示兜底卡片
 3. 在系统选择器里选「剪集」→ 提示自动消失，回到抖音
-4. 回到抖音再进一次：**期望**再提醒一次（每次进入提醒一次；同一次进入不会重复弹）
+4. 回到抖音再进一次：**期望**再提醒一次（每次进入提醒一次；同一次进入不会重复弹；离开绑定 App 气泡会自动消失）
 5. 要看的日志行：`canDrawOverlays=true`、`importance=4, ..., hasSound=true`、`bound app entered foreground, reminder gate reset`、
-   `PickerActivity launched directly (overlay permission granted)`、`showInputMethodPicker() called (source=auto, attempt=1)`、
-   `PickerActivity: picker shown & dismissed (...ms), finishing`（或兜底分支 `picker did not show ... revealing fallback card`）
+   `BindAppBubble: shown`、`vibrated reminder feedback`、点气泡后 `overlay bubble clicked, opening reminder page`、
+   `showInputMethodPicker() called (source=auto, attempt=1)`、`PickerActivity: picker shown & dismissed (...ms), finishing`
+   （若没授权则走兜底：`overlay permission NOT granted, falling back to notification`）
 
 ---
 
@@ -168,6 +185,9 @@ no MOVE_TO_FOREGROUND   → 15s 内无前台切换事件
 | 通知ID | `2` | ClipboardService.kt `BIND_NOTIFICATION_ID` |
 | 悬浮提醒权限 | `SYSTEM_ALERT_WINDOW`（开了才直接拉提醒卡片） | AndroidManifest.xml / ClipboardService.kt / MainActivity.kt |
 | Settings key | `bound_app_package` / `bound_app_label` | MainActivity.kt / ClipboardService.kt |
+| 开关 key | `bind_app_reminder_enabled`（悬浮提醒）/ `background_service_enabled`（后台监听服务）/ `hide_persistent_notification`（隐藏常驻通知） | MainActivity.kt（companion）+ ClipboardService.kt |
+| 常驻通知渠道 | `clipboard_service_channel`（IMPORTANCE_MIN）/ `clipboard_service_channel_hidden`（IMPORTANCE_NONE，隐藏时用） | ClipboardService.kt |
+| 气泡 | `TYPE_APPLICATION_OVERLAY`、`FLAG_NOT_FOCUSABLE`、顶部居中 y=96dp | BindAppBubble.kt |
 
 ---
 
