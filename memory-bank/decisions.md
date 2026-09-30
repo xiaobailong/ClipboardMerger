@@ -37,7 +37,7 @@
 ## ADR-005 版本号单一真源 `version.properties`，APK 命名带版本号
 - 日期: 2026-09-23 | 状态: 已采纳
 - 决策: `version.properties`（`versionCode` / `versionName`）为唯一真源，`app/build.gradle.kts` 读取；
-  `incrementVersion` 任务负责递增；APK 固定命名 `ClipboardMerger-v<versionName>-<versionCode>.apk`；
+  `incrementVersion` 任务负责递增；APK 固定命名 `JianJi-v<versionName>-<versionCode>.apk`；
   `layout.buildDirectory = rootProject/build` ⇒ 产物在仓库根 `build\outputs\apk\debug\`，
   `build.bat` 再复制一份到仓库根（`*.apk` gitignored，分发走 GitHub Release）。
 - 理由: 用 Gradle 改属性文件比批处理文本重写可靠；文件名带版本号方便真机区分安装包。
@@ -104,7 +104,7 @@
 - 决策: 新增仓库根 `gh-release.bat`（与 `build.bat` 同级，可双击）：**不递增版本、不提交、不编译**。
   ①标签名取自 `version.properties`（真源，`ADR-005`）；②标签强制指向 HEAD（`git tag -f -a`），已存在但指他处时先警告 + 要求输入 `y` 确认；
   ③未推送则先 push main → push tag（失败回落 `-f`，复用 `:git_push` 3 次重试，`ADR-009`）→ `:gh_release` 幂等建/更新 Release + 上传 APK；
-  ④Release 说明 = `ClipboardMerger vX.XX (build N) | <HEAD 短哈希 + 提交标题>`；⑤APK 定位顺序 = 根目录 `ClipboardMerger-v<ver>-<code>.apk`
+  ④Release 说明 = `剪集 vX.XX (build N) | <HEAD 短哈希 + 提交标题>`；⑤APK 定位顺序 = 根目录 `JianJi-v<ver>-<code>.apk`
   → 根目录任意 `*.apk` → `build\outputs\apk\debug\*.apk`；⑥`gh-release.bat check` = 只读预检（打印将执行的命令）；可显式传 `<tag> [apk]`；
   `GH_EXE` / `GH_REPO` 支持环境变量覆盖（为测试）。
 - 理由: 发布失败可单独、幂等重试；脚本不碰版本号与工作区 ⇒ 重跑不污染 git 历史；`check` 让“发布前看一眼”零成本。

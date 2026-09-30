@@ -51,7 +51,7 @@
 ## PIT-009 长构建要放独立窗口，前台跑会被下一条命令掐断
 - 触发条件: `build.bat` 这类分钟级任务。
 - 现象: 跑到一半被杀，`build\logs\build_<ts>.log` 停在中间。
-- 正确做法: `start "ClipboardMerger Build" cmd /c "build.bat"`，之后**只用 `read_files` 轮询**日志；
+- 正确做法: `start "剪集 Build" cmd /c "build.bat"`，之后**只用 `read_files` 轮询**日志；
   等一会儿用 `ping -n N 127.0.0.1 > nul`（非交互环境 `timeout` 不可靠）。
 - 反例: 前台起构建后又发命令；构建中反复发命令。
 - 自检: 日志是否连续；`tasklist /fi "imagename eq java.exe"` 里 Gradle JVM 是否还在。
@@ -161,7 +161,7 @@
   逐个 `gh api "repos/<repo>/releases/assets/<id>" --jq .name` 比对文件名，命中即
   `gh api -X DELETE "repos/<repo>/releases/assets/<id>"`，最后再 `release upload --clobber`。
   已落到 `gh-release.bat`（`:drop_same_asset`）。
-  实测对照：`gh release delete-asset v1.53 ClipboardMerger-v1.53-54.apk --yes` 报
+  实测对照：`gh release delete-asset v1.53 JianJi-v1.53-54.apk --yes` 报
   `asset ... not found in release v1.53`，但同一条资产（id 583293306，state=uploaded）在 REST 里查得到。
 - 反例: 以为“`--clobber` 一定覆盖成功”；把 422 当成“权限 / 标签不存在”。
 - 自检: 同一版本**连跑两次** `gh-release.bat`，第二次不应再出现 422。

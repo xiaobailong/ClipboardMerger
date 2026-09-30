@@ -1,9 +1,9 @@
 @echo off
 chcp 65001 > nul
-title ClipboardMerger Clean
+title 剪集 Clean
 
 REM ============================================
-REM  ClipboardMerger 清理构建产物脚本
+REM  剪集 清理构建产物脚本
 REM  用途: 清理 Gradle 构建输出、缓存和产物
 REM ============================================
 
@@ -20,7 +20,7 @@ cd /d d:\WorkSpace\test\ClipboardMerger 2>nul || (
 
 echo.
 echo ============================================
-echo  ClipboardMerger 清理构建产物
+echo  剪集 清理构建产物
 echo ============================================
 echo.
 

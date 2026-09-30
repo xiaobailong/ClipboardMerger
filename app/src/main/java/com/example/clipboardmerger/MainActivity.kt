@@ -402,7 +402,7 @@ class MainActivity : AppCompatActivity() {
             Logger.d("IME status clicked, opening input method picker")
             val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
             imm.showInputMethodPicker()
-            Toast.makeText(this, "Select \"ClipboardMerger\" as your keyboard to enable background clipboard monitoring", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Select \"剪集\" as your keyboard to enable background clipboard monitoring", Toast.LENGTH_LONG).show()
         }
     }
 

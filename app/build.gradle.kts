@@ -71,7 +71,7 @@ android {
     applicationVariants.all {
         outputs.forEach {
             (it as com.android.build.gradle.internal.api.BaseVariantOutputImpl).outputFileName =
-                "ClipboardMerger-v${vName}-${vCode}.apk"
+                "JianJi-v${vName}-${vCode}.apk"
         }
     }
 }

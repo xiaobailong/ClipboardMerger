@@ -1,4 +1,4 @@
-# ClipboardMerger 工作区避坑规则
+# 剪集 工作区避坑规则
 
 > 执行命令或操作过程中遇到的坑，自动记录在此。每条包含：现象、原因、解决方案。
 
@@ -40,7 +40,7 @@
 - **现象**：在 cmd 中执行 `title xxx` 命令，VSCode 终端标签仍然显示 "cmd"，没有变成设置的名字。
 - **原因**：VSCode 集成终端的标签由 VS Code API 控制（`Terminal.name`），`title` 命令改的是 Windows 控制台窗口标题，在 VSCode 中不生效。ANSI OSC 转义序列（`\e]0;...`）、PowerShell `$Host.UI.RawUI.WindowTitle` 同样无效。
 - **解决方案/规避**：
-  - **标签名（程序化）**：`.vscode/settings.json` 配置 `"terminal.integrated.tabs.title": "ClipboardMerger"`，所有新终端统一显示为 `ClipboardMerger`（而非 `cmd`）。
+  - **标签名（程序化）**：`.vscode/settings.json` 配置 `"terminal.integrated.tabs.title": "剪集"`，所有新终端统一显示为 `剪集`（而非 `cmd`）。
   - **内容标识（程序化）**：每个新终端第一行输出 `echo === task-N-用途 ===`，如 `echo === task-1-build ===`。
 
 ### 4. Gradle 构建输出无法被终端捕获（卡住无输出）

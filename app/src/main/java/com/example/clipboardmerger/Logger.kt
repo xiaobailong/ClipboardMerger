@@ -15,9 +15,9 @@ object Logger {
     const val PREFS_NAME = "clipboard_merger_settings"
     const val KEY_LOG_ENABLED = "log_enabled"
 
-    private const val TAG = "ClipboardMerger"
-    private const val LOG_DIR_NAME = "ClipboardMerger"
-    private const val LOG_FILE_PREFIX = "clipboard_merger_log"
+    private const val TAG = "JianJi"
+    private const val LOG_DIR_NAME = "JianJi"
+    private const val LOG_FILE_PREFIX = "jianji_log"
     private const val LOG_RETENTION_DAYS = 7L
     private val timestampFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
@@ -42,7 +42,7 @@ object Logger {
         val sdk = android.os.Build.VERSION.SDK_INT
         val model = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
 
-        sb.append("=== ClipboardMerger v${getVersionName(appCtx)} ===\n")
+        sb.append("=== 剪集 v${getVersionName(appCtx)} ===\n")
         sb.append("=== SDK: $sdk | Device: $model ===\n")
 
         // 关闭状态下不碰 Download 目录：既不建目录，也不建/写日志文件（只算出“将会写到哪里”给设置页展示）

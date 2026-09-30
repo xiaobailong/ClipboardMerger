@@ -18,7 +18,7 @@ $utf8Bom = New-Object System.Text.UTF8Encoding($true)
 # 日志文件仍是 UTF-8 带 BOM（与历史格式一致）
 $writer = New-Object System.IO.StreamWriter($Log, $false, $utf8Bom)
 $writer.AutoFlush = $true
-$writer.WriteLine('[' + (Get-Date -Format 'yyyyMMdd_HHmmss') + '] ClipboardMerger Build Start')
+$writer.WriteLine('[' + (Get-Date -Format 'yyyyMMdd_HHmmss') + '] JianJi Build Start')
 
 if ([string]::IsNullOrWhiteSpace($Script)) {
     $writer.WriteLine('[error] _CM_SELF is empty, nothing to run')

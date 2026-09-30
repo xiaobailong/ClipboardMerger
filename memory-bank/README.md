@@ -22,7 +22,7 @@
 | 日志中文乱码 / PowerShell 查询挂死 / 搜不到东西 | `PIT-010`、`PIT-011`、`PIT-017` | P |
 | 管道 + PowerShell 写日志丢内容；`call` 递归退出码不对 | `PIT-012`、`PIT-013` | P |
 | 产物放 `build\` 被清 / 日志看不到最新 / 窗口没关又起一轮 / 日志缺一段 | `PIT-015`、`PIT-016`、`PIT-020`、`PIT-021` | P |
-| 日志开关关了还有输出 / 仍建 Download\ClipboardMerger 目录 | `ISSUE-003` | I |
+| 日志开关关了还有输出 / 仍建 Download\JianJi 目录 | `ISSUE-003` | I |
 | 构建走到“提交版本变更”就停（不 commit/tag/release） | `ISSUE-004` | I |
 | `build.gradle.kts` 报 `Unresolved reference: text / util` | `PIT-022` | P |
 | `'C:\Program' is not recognized`；一行 `if/else` 后接 `& 命令` 不执行 | `PIT-023`、`PIT-024` | P |

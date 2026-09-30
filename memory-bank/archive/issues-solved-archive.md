@@ -16,13 +16,13 @@ if not defined _CM_LOG_ACTIVE (
     if not exist "build\logs" mkdir "build\logs"
     for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"') do set "_CM_LOG_TS=%%i"
     set "_CM_LOGFILE=build\logs\build_%_CM_LOG_TS%.log"
-    echo [%_CM_LOG_TS%] ClipboardMerger Build Start > "%_CM_LOGFILE%"
+    echo [%_CM_LOG_TS%] 剪集 Build Start > "%_CM_LOGFILE%"
     "%~f0" %* 2>&1 | powershell -NoProfile -Command "$input | ForEach-Object { $_ | Out-File -FilePath '%_CM_LOGFILE%' -Append -Encoding utf8; Write-Output $_ }"
     ...
 )
 ```
 整个块在解析期一次性展开 ⇒ 块内 `set` 之后再用的 `%_CM_LOG_TS%` / `%_CM_LOGFILE%` 仍是**空**：
-首行变 `[] ClipboardMerger Build Start`、重定向目标变成空路径。
+首行变 `[] 剪集 Build Start`、重定向目标变成空路径。
 修法：改成 `if not defined _CM_LOG_ACTIVE goto :init_log` / `goto :skip_log`，用**标签块**替代括号块（见 `PIT-007`）。
 
 ### 第 2 层：管道 + `powershell -Command` 里的路径同样被预展开（`f9bc43c`）
@@ -54,6 +54,6 @@ exit /b %_CM_BUILD_RESULT%
 ③日志名带时间戳，天然每轮一换，避开"读到旧内容"（`PIT-016`）。
 
 ### 附带结论
-- 首行 `[<ts>] ClipboardMerger Build Start` 用 PowerShell 写（UTF-8 **BOM**，便于编辑器识别中文），
+- 首行 `[<ts>] 剪集 Build Start` 用 PowerShell 写（UTF-8 **BOM**，便于编辑器识别中文），
   其余内容由 cmd 以 `chcp 65001` 追加（见 `PIT-002` 的编码约定）。
 - 当时还考虑过"整体重写为 PowerShell 构建脚本"，因改动面太大放弃（`ADR-003` 的备选）。

@@ -1,4 +1,4 @@
-# ClipboardMerger — Cline 工作约定
+# 剪集 — Cline 工作约定
 
 > 只放：编码 / 输出 / 目录结构 / 禁止操作 + 两条流程指针。历史与细节在 `memory-bank/`（索引 `memory-bank/README.md`）。
 

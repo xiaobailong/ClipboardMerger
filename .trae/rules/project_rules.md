@@ -1,7 +1,7 @@
-# ClipboardMerger 项目规则
+# 剪集 项目规则
 
 ## 概述
-Android 剪贴板合并工具，支持输入法（IME）内嵌剪贴板面板，实时监听系统剪贴板变化并自动合并/管理剪贴历史。
+Android 剪贴板合并工具「剪集」，支持输入法（IME）内嵌剪贴板面板，实时监听系统剪贴板变化并自动合并/管理剪贴历史。
 
 ## 技术栈
 - **语言**: Kotlin
@@ -58,7 +58,7 @@ ClipboardMerger/
 
 ### 代码规范
 - 使用 Kotlin 标准库函数
-- 日志使用 `Logger` 工具类，支持文件日志（`/ClipboardMerger/` 目录下），自动清理 7 天前日志
+- 日志使用 `Logger` 工具类，支持文件日志（`/JianJi/` 目录下），自动清理 7 天前日志
 - 日志开关通过 SharedPreferences `clipboard_merger_settings` 的 `log_enabled` 键控制
 - IME 服务与主应用通过 `ClipboardRepository` 共享剪贴数据
 - 剪贴板监听需处理 `selfUpdating` 标记避免循环更新
@@ -68,7 +68,7 @@ ClipboardMerger/
 - 代码注释可使用中文或英文，但面向用户的界面文字必须使用中文
 
 ### 终端管理（强制）
-- **终端标签名**：`.vscode/settings.json` 配置 `"terminal.integrated.tabs.title": "ClipboardMerger"`，所有新终端标签统一显示为 `ClipboardMerger`。
+- **终端标签名**：`.vscode/settings.json` 配置 `"terminal.integrated.tabs.title": "剪集"`，所有新终端标签统一显示为 `剪集`。
 - **终端内容标识（必须）**：每个新终端首条命令必须是标识头：
   ```cmd
   echo === task-N-用途 ===

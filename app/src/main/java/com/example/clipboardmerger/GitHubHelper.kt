@@ -63,7 +63,7 @@ class GitHubHelper(private val context: Context) {
             val connection = openConnection(apiUrl)
             connection.setRequestProperty("Authorization", "token ${getToken()}")
             connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
-            connection.setRequestProperty("User-Agent", "ClipboardMerger")
+            connection.setRequestProperty("User-Agent", "JianJi")
             connection.connectTimeout = 8000
             connection.readTimeout = 8000
 
@@ -107,7 +107,7 @@ class GitHubHelper(private val context: Context) {
                 val getConn = openConnection(apiUrl)
                 getConn.setRequestProperty("Authorization", "token ${getToken()}")
                 getConn.setRequestProperty("Accept", "application/vnd.github.v3+json")
-                getConn.setRequestProperty("User-Agent", "ClipboardMerger")
+                getConn.setRequestProperty("User-Agent", "JianJi")
                 getConn.connectTimeout = 8000
                 getConn.readTimeout = 8000
                 Logger.d("GitHubHelper.saveFile: connecting to get SHA...")
@@ -121,7 +121,7 @@ class GitHubHelper(private val context: Context) {
 
             val encoded = Base64.encodeToString(content.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
             val body = JSONObject().apply {
-                put("message", "Update via ClipboardMerger")
+                put("message", "Update via 剪集")
                 put("content", encoded)
                 if (sha != null) put("sha", sha)
             }

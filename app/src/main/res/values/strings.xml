@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">剪贴板收集器</string>
+    <string name="app_name">剪集</string>
     <string name="btn_select_all">全选</string>
     <string name="btn_deselect_all">取消全选</string>
     <string name="btn_merge">合并选中</string>
@@ -11,7 +11,7 @@
     <string name="toast_select_item">请至少选择一项</string>
     <string name="toast_item_deleted">项目已删除</string>
     <string name="swipe_delete">删除</string>
-    <string name="ime_service_desc">剪贴板收集器输入法 - 通过输入法权限在后台监听剪贴板</string>
+    <string name="ime_service_desc">剪集输入法 - 通过输入法权限在后台监听剪贴板</string>
     <string name="ime_status_active">输入法: 已激活 ✅ — 后台监听中</string>
     <string name="ime_status_disabled">输入法: 未激活 ⚠️ (点击切换键盘)</string>
 

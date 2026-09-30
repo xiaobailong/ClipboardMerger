@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "ClipboardMerger"
+rootProject.name = "剪集"
 include(":app")

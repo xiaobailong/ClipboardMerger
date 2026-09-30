@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 > nul
-title ClipboardMerger GitHub Release
+title 剪集 GitHub Release
 
 REM --- relaunch once in a fresh cmd: with code page 65001 already active, the file is
 REM     re-read as UTF-8 from byte 0, so CJK lines are not mis-parsed by the 936-start
@@ -15,7 +15,7 @@ exit /b %_CM_GH_RC%
 cd /d "%~dp0"
 
 REM ============================================
-REM  ClipboardMerger - standalone GitHub Release script (gh only)
+REM  剪集 - standalone GitHub Release script (gh only)
 REM  Target = the LAST COMMIT (HEAD): tag + push tag + create/update Release + upload APK.
 REM  No version bump, no commit, no build. Tag name comes from version.properties
 REM  (single source of truth, see ADR-005 / ADR-011).
@@ -59,7 +59,7 @@ goto :log_done
 
 :log_legacy
 echo [警告] 缺少 tools\tee-log.ps1，退回"先写文件、结束再回显"模式
-powershell -NoProfile -Command "[System.IO.File]::WriteAllText('%_CM_LOGFILE%', '[%_CM_LOG_TS%] ClipboardMerger Release Start', [System.Text.UTF8Encoding]::new($true))"
+powershell -NoProfile -Command "[System.IO.File]::WriteAllText('%_CM_LOGFILE%', '[%_CM_LOG_TS%] 剪集 Release Start', [System.Text.UTF8Encoding]::new($true))"
 call "%~f0" %* 1>> "%_CM_LOGFILE%" 2>&1
 set "_CM_REL_RESULT=%ERRORLEVEL%"
 type "%_CM_LOGFILE%"
@@ -99,7 +99,7 @@ if /i "%GH_TAG%"=="check" (
 )
 
 echo ============================================
-echo  ClipboardMerger GitHub Release - %date% %time%
+echo  剪集 GitHub Release - %date% %time%
 echo ============================================
 if "%GH_DRY%"=="1" echo  [预检 check] 只做只读检查，不会打标签 / 推送 / 发 Release
 echo.
@@ -138,7 +138,7 @@ set "GH_COMMIT=%GH_COMMIT:<=/%"
 set "GH_COMMIT=%GH_COMMIT:>=/%"
 for /f "delims=" %%i in ('git rev-parse HEAD') do set "HEAD_SHA=%%i"
 for /f "delims=" %%i in ('git rev-parse --abbrev-ref HEAD') do set "HEAD_BRANCH=%%i"
-set "GH_NOTES=ClipboardMerger %GH_TAG% (build %V_CODE%) | %GH_COMMIT%"
+set "GH_NOTES=剪集 %GH_TAG% (build %V_CODE%) | %GH_COMMIT%"
 echo       提交: %GH_COMMIT%
 echo       分支: %HEAD_BRANCH%
 
@@ -335,7 +335,7 @@ REM  note: goto branches instead of if/else blocks -- half-width parens coming f
 REM        commit subject would break block parsing (PIT-005)
 REM ============================================
 :gh_release
-if "%GH_NOTES%"=="" set "GH_NOTES=ClipboardMerger %GH_TAG%"
+if "%GH_NOTES%"=="" set "GH_NOTES=剪集 %GH_TAG%"
 if "%APK_PATH%"=="" (
     echo [错误] APK 路径为空，无法上传 Release！
     exit /b 1
@@ -400,7 +400,7 @@ REM  then build\outputs\apk\debug\*.apk
 REM ============================================
 :find_apk
 set "APK_PATH="
-for %%f in ("ClipboardMerger-v%V_NAME%-%V_CODE%.apk") do if exist "%%~f" set "APK_PATH=%%~f"
+for %%f in ("JianJi-v%V_NAME%-%V_CODE%.apk") do if exist "%%~f" set "APK_PATH=%%~f"
 if not "%APK_PATH%"=="" exit /b 0
 for %%f in (*.apk) do if exist "%%~f" set "APK_PATH=%%~f"
 if not "%APK_PATH%"=="" exit /b 0
@@ -415,5 +415,3 @@ echo.
 echo 窗口将在 10 秒后自动关闭，按任意键立即关闭...
 timeout /t 10
 goto :eof
-
-

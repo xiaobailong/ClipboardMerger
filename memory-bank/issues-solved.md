@@ -43,7 +43,7 @@
 ## ISSUE-003 全局日志开关关闭后，进程重启仍有日志输出
 - 状态: 已修复（2026-09-23）
 - 症状 / 现场: 设置里关掉“日志输出”当场生效；但进程被回收 / 重启手机 / 输入法服务被系统重新拉起后，
-  `Download/ClipboardMerger/clipboard_merger_log_<date>.txt` 又在增长、Logcat 又在刷。
+  `Download/JianJi/jianji_log_<date>.txt` 又在增长、Logcat 又在刷。
 - 复发判据: 关闭开关 → 完全杀掉进程（`adb shell am force-stop com.example.clipboardmerger`）→ 切换一次输入法触发服务启动 →
   看当天日志文件是否又出现 `=== Log started ===`。静态判据（5 秒）:
   ```bat
@@ -59,7 +59,7 @@
   同时删掉 Activity 侧的内存态 setter / 本地常量（旧 API `setEnabled(Boolean)` 已不存在）。
 - 加强（2026-09-23）: 关闭时**连 Download 目录都不再创建** —— `init()` 只在 `enabled` 时调 `trySetupLog()`，
   否则只算预期路径（`expectedLogPath()`，不 `mkdir`）；`setEnabled(context, true)` 才补建；UI 用 `isLogFileActive()`
-  加“（当前未创建）”提示。判据：关开关 → 杀进程重启 → `adb shell ls /sdcard/Download/ClipboardMerger` 应为 `No such file or directory`。
+  加"（当前未创建）"提示。判据：关开关 → 杀进程重启 → `adb shell ls /sdcard/Download/JianJi` 应为 `No such file or directory`。
 - 反例 / 易误判: 以为“Activity 里 `loadLogSetting()` 已经设过 ⇒ 全局都关了”（服务/输入法可能在新进程里先跑）；
   以为“文件里还有新行 ⇒ 开关没生效”（其实要区分“关掉之后写入的行”和“重启后被重新打开”）。
 - 相关: `ADR-008`；首次记录: 2026-09-23 ／ 最近复核: 2026-09-23（静态判据 + `assembleDebug` 通过）
@@ -109,7 +109,7 @@
   `Post https://api.github.com/graphql: net/http: TLS handshake timeout`，**设 `http_proxy` / `https_proxy=http://127.0.0.1:7897` 后可用**
   （`curl -x` 探测：代理可达时 `proxy_api=200`，代理没起时 `000`）；③`gh-release.bat` 因此加了两条路：
   「远端标签已指向 HEAD ⇒ 跳过 tag + 推送」（判定走 `gh api`，不吃 SSH）+ `GH_PROXY` 代理注入 —— 本次即靠它完成发布：
-  Release `v1.53`（原本是**草稿**，已 `--draft=false` 发布）+ APK `ClipboardMerger-v1.53-54.apk` 已上传。
+  Release `v1.53`（原本是**草稿**，已 `--draft=false` 发布）+ APK `JianJi-v1.53-54.apk` 已上传。
 
 ## ISSUE-006 抽段测试把「主流程」当成子过程跑了 ⇒ 误建并推送真实 tag `v1.53`
 - 状态: 已修复（2026-09-23，抽取脚本起点已改）

@@ -23,7 +23,7 @@ goto :log_done
 :log_legacy
 echo [警告] 缺少 tools\tee-log.ps1，退回“先写文件、结束再回显”模式
 REM 日志保存为 UTF-8（通过 PowerShell 写入 BOM）
-powershell -NoProfile -Command "[System.IO.File]::WriteAllText('%_CM_LOGFILE%', '[%_CM_LOG_TS%] ClipboardMerger Build Start', [System.Text.UTF8Encoding]::new($true))"
+powershell -NoProfile -Command "[System.IO.File]::WriteAllText('%_CM_LOGFILE%', '[%_CM_LOG_TS%] 剪集 Build Start', [System.Text.UTF8Encoding]::new($true))"
 call "%~f0" %* 1>> "%_CM_LOGFILE%" 2>&1
 set _CM_BUILD_RESULT=%ERRORLEVEL%
 type "%_CM_LOGFILE%"
@@ -37,10 +37,10 @@ exit /b %_CM_BUILD_RESULT%
 
 :skip_log
 
-title ClipboardMerger Build
+title 剪集 Build
 
 REM ============================================
-REM  ClipboardMerger 一键构建脚本
+REM  剪集 一键构建脚本
 REM  用法: 双击运行        (构建+递增版本+GitHub Release)
 REM        build setup     (安装 Android SDK 组件)
 REM        build clean     (清理构建产物)
@@ -114,7 +114,7 @@ REM ============================================
 :build
 echo.
 echo ============================================
-echo  ClipboardMerger 构建 - %date% %time%
+echo  剪集 构建 - %date% %time%
 echo ============================================
 echo.
 
@@ -260,7 +260,7 @@ REM ============================================
 :release
 echo.
 echo ============================================
-echo  ClipboardMerger 构建 ^& 发布 - %date% %time%
+echo  剪集 构建 ^& 发布 - %date% %time%
 echo ============================================
 echo.
 
@@ -466,13 +466,13 @@ if errorlevel 1 (
     echo       创建 Release %TAG% 并上传 APK...
     "%GH_EXE%" release create "%TAG%" "%APK_PATH%" ^
         --title "%TAG%" ^
-        --notes "ClipboardMerger %TAG% (build %V_CODE%)" ^
+        --notes "剪集 %TAG% (build %V_CODE%)" ^
         --repo "%GH_REPO%"
 ) else (
     echo       Release %TAG% 已存在，更新说明并覆盖上传 APK...
     "%GH_EXE%" release edit "%TAG%" ^
         --title "%TAG%" ^
-        --notes "ClipboardMerger %TAG% (build %V_CODE%)" ^
+        --notes "剪集 %TAG% (build %V_CODE%)" ^
         --repo "%GH_REPO%" >nul 2>&1
     "%GH_EXE%" release upload "%TAG%" "%APK_PATH%" --clobber --repo "%GH_REPO%"
 )
