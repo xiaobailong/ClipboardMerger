@@ -31,3 +31,6 @@
 | 工具栏"三个点"下拉 / 关于弹框的构建信息 | `ADR-008` | D |
 | 绑定App：输入法选择器不弹出 + 通知不悬浮（根因 = IMMS 焦点闸门） | `ISSUE-007`、`PIT-028`、`ADR-012` | I + P + D |
 | `showInputMethodPicker()`“调用成功但不弹” | `PIT-028` | P |
+| 真机复验前先确认“装的到底是哪个版本”（拿旧包当新包） | `PIT-029` | P |
+| 编译报 `Unresolved reference: <layout>/<id>`（资源文件丢了） | `PIT-030` | P |
+| 华为渠道「无声音」⇒ 永远没横幅（importance=HIGH 也没用） | `PIT-031` | P |

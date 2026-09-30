@@ -12,6 +12,7 @@ import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Canvas
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -600,6 +601,10 @@ class MainActivity : AppCompatActivity() {
                     showBindAppDialog()
                     true
                 }
+                R.id.action_overlay_permission -> {
+                    showOverlayPermissionDialog()
+                    true
+                }
                 R.id.action_about -> {
                     showAboutDialog()
                     true
@@ -850,6 +855,7 @@ class MainActivity : AppCompatActivity() {
                     Logger.d("BindApp dialog: saved package=[$selectedPackage], label=[$selectedLabel]")
                     setupBindAppStatus()
                     Toast.makeText(this, R.string.bind_app_saved, Toast.LENGTH_SHORT).show()
+                    if (selectedPackage.isNotEmpty()) ensureOverlayPermission()
                 } else {
                     Logger.w("BindApp dialog: invalid selectedPosition=$selectedPosition, no save")
                 }
@@ -863,6 +869,65 @@ class MainActivity : AppCompatActivity() {
             Logger.d("BindApp dialog: list item clicked position=$position, label=[${appLabels[position]}]")
             listView.setItemChecked(position, true)
         }
+    }
+
+    /** 华为 / 鸿蒙会吞通知横幅：没有「显示在其他应用上层」权限时提示用户去开（开了才能自动把提醒卡片弹到前台） */
+    /** 「悬浮提醒权限」入口（更多菜单）：显示当前状态 + 跳系统授权页 */
+    private fun showOverlayPermissionDialog() {
+        val granted = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)
+        Logger.d("Overlay permission dialog: opened, granted=$granted")
+        val builder = AlertDialog.Builder(this)
+            .setTitle(R.string.overlay_permission_title)
+            .setMessage(
+                if (granted) getString(R.string.overlay_permission_granted)
+                else getString(R.string.overlay_permission_missing)
+            )
+            .setNegativeButton(android.R.string.cancel, null)
+        if (granted) {
+            builder.setPositiveButton(android.R.string.ok, null)
+        } else {
+            builder.setPositiveButton(R.string.bind_app_overlay_grant) { _, _ -> openOverlayPermissionPage() }
+        }
+        builder.show()
+    }
+
+    /** 打开系统的「显示在其他应用上层」授权页 */
+    private fun openOverlayPermissionPage() {
+        try {
+            startActivity(
+                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+            )
+            Logger.d("BindApp: ACTION_MANAGE_OVERLAY_PERMISSION launched")
+        } catch (e: Exception) {
+            Logger.e("BindApp: failed to open overlay permission page: ${e.message}", e)
+        }
+    }
+
+    private fun ensureOverlayPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        if (Settings.canDrawOverlays(this)) {
+            Logger.d("BindApp: overlay permission already granted")
+            return
+        }
+        Logger.d("BindApp: overlay permission NOT granted, prompting user")
+        AlertDialog.Builder(this)
+            .setTitle(R.string.bind_app_overlay_title)
+            .setMessage(R.string.bind_app_overlay_message)
+            .setPositiveButton(R.string.bind_app_overlay_grant) { _, _ ->
+                try {
+                    startActivity(
+                        Intent(
+                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:$packageName")
+                        )
+                    )
+                    Logger.d("BindApp: ACTION_MANAGE_OVERLAY_PERMISSION launched")
+                } catch (e: Exception) {
+                    Logger.e("BindApp: failed to open overlay permission page: ${e.message}", e)
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     companion object {

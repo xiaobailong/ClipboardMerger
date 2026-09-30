@@ -73,5 +73,13 @@
     <string name="picker_btn_switch">弹出输入法选择器</string>
     <string name="picker_btn_settings">打开系统输入法设置</string>
     <string name="picker_btn_close">关闭</string>
+    <string name="bind_app_overlay_title">开启「悬浮提醒」权限</string>
+    <string name="bind_app_overlay_message">华为 / 鸿蒙等系统会拦掉通知横幅，导致提醒看不到。\n\n开启「显示在其他应用上层」后，打开绑定的 App 时剪集会直接把切换提醒弹到前台。\n\n设置路径：设置 → 应用 → 剪集 → 显示在其他应用上层</string>
+    <string name="bind_app_overlay_grant">去开启</string>
+    <string name="settings_overlay_permission">悬浮提醒权限</string>
+    <string name="overlay_permission_title">悬浮提醒权限</string>
+    <string name="overlay_permission_missing">当前未开启。\n\n华为 / 鸿蒙会拦掉通知横幅，开启「显示在其他应用上层」后，打开绑定的 App 时剪集会直接把切换提醒弹到前台（不用再去点通知）。\n\n设置路径：设置 → 应用 → 剪集 → 显示在其他应用上层</string>
+    <string name="overlay_permission_granted">已开启 ✔\n\n打开绑定的 App 时，剪集会直接弹出切换提醒。</string>
+
 
 </resources>

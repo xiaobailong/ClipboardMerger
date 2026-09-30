@@ -9,4 +9,6 @@
     <color name="text_secondary">#99000000</color>
     <color name="divider">#1F000000</color>
     <color name="delete_red">#FFE53935</color>
+    <!-- 绑定App「切换输入法」提醒页：整屏遮罩 -->
+    <color name="picker_scrim">#B3000000</color>
 </resources>

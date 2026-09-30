@@ -169,7 +169,31 @@
 ## PIT-028 `showInputMethodPicker()` 静默失败：必须在“窗口已经拿到焦点”之后再调（根因，非华为特有）
 - 触发条件: 在 `onCreate`（窗口还没获得焦点）里调 `showInputMethodPicker()`；实测设备 华为 LIO-AN00m / SDK 31，但闸门在 AOSP 里，其它机型同样适用
 - 现象: 应用日志显示“已调用”（API 返回 void），但选择器不出现、无异常；系统侧只有一条 `Slog.w("Ignoring showInputMethodPickerFromClient of uid ...")`（`InputMethodManagerService.showInputMethodPickerFromClient()`）
-- 正确做法: ①本应用的 Activity 窗口**拿到焦点之后**再延迟几百 ms 调（`onWindowFocusChanged(true)` → `postDelayed(400L)`）：`canShowInputMethodPickerLocked()` 要求 `client == mCurFocusedWindowClient`，它只在 `startInputOrWindowGainedFocus` 成功后更新；②留手动兜底 `Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)`；③窗口不能是不可见的（要有真实、可获焦点的 Activity）
+- 正确做法: ①本应用的 Activity 窗口**拿到焦点之后**再延迟几百 ms 调（`onWindowFocusChanged(true)` → `postDelayed(400L)`）：`canShowInputMethodPickerLocked()` 要求 `client == mCurFocusedWindowClient`，它只在 `startInputOrWindowGainedFocus` 成功后更新；②留手动兜底 `Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)`；③窗口不能是不可见的（要有真实、可获焦点的 Activity）；④**自动调用只做一次** —— `InputMethodMenuController.showInputMethodMenu()` 先 `hideInputMethodMenuLocked()` 再新建 dialog（`InputMethodMenuController.java:109`），重复调用 = 关掉再重开（用户看到“一闪而过”），第二次若又被闸门拦下就彻底消失
 - 反例: 在 `onCreate` 里直接调（窗口没焦点 ⇒ 被丢弃，还会以为“华为拦截”）；把“调用成功”当“已弹出”
 - 自检: `findstr /n "onWindowFocusChanged" app\src\main\java\com\example\clipboardmerger\PickerActivity.kt`（期望 1 处命中）+ 真机日志出现 `showInputMethodPicker() called (attempt=1)` 且选择器可见；`onCreate, showing input method picker` 这种“onCreate 里就调”的日志 ⇒ 复发
 - 首次记录: 2026-10-01 ／ 最近复核: 2026-10-01（定案：不是华为特有限制，是 IMMS 的“当前焦点窗口 client”闸门；修法见 `ISSUE-007`）
+
+## PIT-029 真机复验前先确认“装的到底是哪个版本”（拿旧包当新包，白测一轮）
+- 触发条件: 改动只在工作区、还没出过包时，直接让用户去真机验证。
+- 现象: 用户报“修复无效”，但日志里 `App version: 1.79`，且**新代码独有的日志行**（如 `notificationsEnabled=`）一条都没有 ⇒ 根本没跑新代码。
+- 正确做法: 出验证包时同时递增版本号（`gradle :app:incrementVersion` 之后再 `gradle :app:assembleDebug`，**分两次**调用：版本号在配置期读取，同一次调用里改不生效），APK 名 / 关于弹框 / 日志首行都能区分新旧；复验前先在日志里 grep `App version:` 与“新代码独有日志行”。
+- 反例: 用同一版本号出包（如 `JianJi-v1.79-80.apk` 与线上包同名同版本），装完无法分辨是不是新包。
+- 自检: `findstr /n "App version" <日志>` 看版本 + `findstr /n "notificationsEnabled" <日志>`（v1.80 特有）是否有输出。
+- 首次记录: 2026-10-01
+
+## PIT-030 编译报 `Unresolved reference: <layout>/<id>` ⇒ 先查资源文件是不是丢了（不是代码问题）
+- 触发条件: 提交/清理只带走了一部分改动（新增的布局没被提交，或被 `git clean` / `checkout` 回退掉），而代码里仍引用 `R.layout.xxx` / `R.id.xxx`。
+- 现象: `:app:compileDebugKotlin` FAILED：`Unresolved reference: activity_picker` / `tvPickerMessage` / `btnPickerSwitch` …（本次实测：`activity_picker.xml` + `colors.xml` 里的 `picker_scrim` 一起丢，构建直接编不过）。
+- 正确做法: 先核对文件在位 —— `dir /b app\src\main\res\layout`、`git ls-files app/src/main/res/layout`、`git show --stat <commit>`（看那次提交到底带了哪些文件）；缺失就补回来再编译。提交前用 `git status --short` 逐个确认“新增资源 + 被改资源”都进去了。
+- 反例: 把 `Unresolved reference: R.layout.xxx` 当“Kotlin 写错了 / 需要 Rebuild / 清 Gradle 缓存”。
+- 自检: `git ls-files app/src/main/res/layout | findstr activity_picker` 有输出；`findstr /n "picker_scrim" app\src\main\res\values\colors.xml` 有输出。
+- 首次记录: 2026-10-01
+
+## PIT-031 华为/鸿蒙：通知渠道「没有声音」⇒ 永远没有悬浮横幅（importance=HIGH 也没用）
+- 触发条件: 自建 `NotificationChannel` 只 `enableVibration(true)`、没 `setSound(...)`（渠道默认无声音）。
+- 现象: 通知能进抽屉、`areNotificationsEnabled()=true`、`importance=4`、`shouldVibrate=false`，但**从不出横幅**（v1.82 真机日志原文：`notificationsEnabled=true, bindChannel=bind_app_channel_v2, importance=4, shouldVibrate=false`）。EMUI 把无声音渠道当“静默通知”。
+- 正确做法: 渠道必须带声音 —— `setSound(RingtoneManager.getDefaultUri(TYPE_NOTIFICATION), AudioAttributes(USAGE_NOTIFICATION))`；渠道属性不可变 ⇒ **换新 ID**（本项目 `bind_app_channel_v3`，同时删掉 v1/v2）。并且别把“能不能看到提醒”全押在横幅上：更硬的兜底是申请 `SYSTEM_ALERT_WINDOW`（显示在其他应用上层）后**直接 `startActivity` 把提醒页拉起**（该权限同时也是后台启动 Activity 的豁免条件）。
+- 反例: 只调 `IMPORTANCE_HIGH` + 振动就以为有横幅；对同一个渠道 ID 反复 `delete` + 重建（v1.79 实测无效）。
+- 自检: 启动日志 `hasSound=${channel.sound != null}`（期望 true）+ 真机亮屏/锁屏各验一次横幅。
+- 首次记录: 2026-10-01

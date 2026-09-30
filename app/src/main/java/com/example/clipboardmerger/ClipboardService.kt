@@ -11,6 +11,8 @@ import android.app.usage.UsageStatsManager
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -26,6 +28,9 @@ class ClipboardService : Service() {
     private val foregroundCheckHandler = Handler(Looper.getMainLooper())
     private var foregroundCheckRunnable: Runnable? = null
     private var lastPickerShownTime = 0L
+
+    /** 上一次检测到的前台包名：用来判断“刚刚进入绑定 App”（进入即重置提醒门） */
+    private var lastForegroundPackage: String? = null
 
     private val clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
         Logger.d("Service.ClipboardListener: onPrimaryClipChanged triggered")
@@ -99,10 +104,11 @@ class ClipboardService : Service() {
             }
             manager.createNotificationChannel(channel)
 
-            // 渠道属性创建后不可变：v1.77 建的老渠道没开振动（⇒ 没有悬浮横幅），
-            // 之后只改代码 / 对同一个 ID 做 delete+重建 都会被系统记住旧属性（ISSUE-007）。
-            // 因此直接换新 ID 重建，并把老 ID 删掉，免得设置里留一条静音渠道。
+            // 渠道属性创建后不可变：v1.77 的老渠道没开振动，v2 又**没有声音** ——
+            // 华为/鸿蒙把“无声音”的渠道按“静默通知”处理，不给悬浮横幅（实测 importance=4 仍不弹）。
+            // 所以再换新 ID v3：高重要性 + 声音 + 振动，并把老 ID 都删掉。
             manager.deleteNotificationChannel(LEGACY_BIND_CHANNEL_ID)
+            manager.deleteNotificationChannel(LEGACY_BIND_CHANNEL_ID_V2)
 
             val bindChannel = NotificationChannel(
                 BIND_CHANNEL_ID,
@@ -110,17 +116,27 @@ class ClipboardService : Service() {
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "检测到绑定应用时提醒切换输入法"
+                setShowBadge(true)
                 enableVibration(true)
                 vibrationPattern = longArrayOf(0, 200, 100, 300)
-                setShowBadge(true)
+                // 必须带声音：没声音的渠道在华为上等同“静默通知”，不会有横幅
+                setSound(
+                    RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
+                    AudioAttributes.Builder()
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                        .build()
+                )
             }
             manager.createNotificationChannel(bindChannel)
 
             val current = manager.getNotificationChannel(BIND_CHANNEL_ID)
+            val canOverlay = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)
             Logger.d(
                 "ClipboardService: notificationsEnabled=${manager.areNotificationsEnabled()}, " +
                     "bindChannel=${current?.id}, importance=${current?.importance}, " +
-                    "shouldVibrate=${current?.shouldVibrate()}"
+                    "shouldVibrate=${current?.shouldVibrate()}, hasSound=${current?.sound != null}, " +
+                    "canDrawOverlays=$canOverlay"
             )
         }
     }
@@ -199,15 +215,31 @@ class ClipboardService : Service() {
         }
 
         Logger.d("ClipboardService.checkForegroundApp: foreground=[$foregroundPkg], bound=[$boundPackage]")
-        if (foregroundPkg != boundPackage) return
 
-        val now = System.currentTimeMillis()
-        if (now - lastPickerShownTime < PICKER_COOLDOWN_MS) {
-            Logger.d("ClipboardService.checkForegroundApp: cooldown active, skip picker")
+        // 离开绑定 App ⇒ 记一笔，下次再进来重新允许提醒一次
+        // （旧实现是 2 分钟内存冷却 ⇒ 用户看到“抖音来回开好几次，只有第一次有提醒”，见 ISSUE-007）
+        if (foregroundPkg != boundPackage) {
+            if (lastForegroundPackage == boundPackage) {
+                Logger.d("ClipboardService: bound app left foreground, next entry will remind again")
+            }
+            lastForegroundPackage = foregroundPkg
             return
         }
 
-        Logger.d("ClipboardService: bound app [$boundPackage] in foreground, IME not active, sending notification")
+        val justEntered = lastForegroundPackage != boundPackage
+        lastForegroundPackage = boundPackage
+
+        val now = System.currentTimeMillis()
+        if (justEntered) {
+            Logger.d("ClipboardService: bound app entered foreground, reminder gate reset")
+            lastPickerShownTime = 0L
+        }
+        if (now - lastPickerShownTime < PICKER_MIN_INTERVAL_MS) {
+            Logger.d("ClipboardService.checkForegroundApp: reminded ${now - lastPickerShownTime}ms ago, skip")
+            return
+        }
+
+        Logger.d("ClipboardService: bound app [$boundPackage] in foreground, IME not active, reminding")
         lastPickerShownTime = now
 
         try {
@@ -219,6 +251,10 @@ class ClipboardService : Service() {
             } catch (e: Exception) {
                 boundPackage
             }
+
+            // 先试“直接把提醒卡片弹出来”（已授予「显示在其他应用上层」时才可行），
+            // 通知照旧发一份（抽屉里留个入口 + 全屏 Intent 兜底）
+            val directLaunched = tryLaunchReminderActivity(appName)
 
             val pickerIntent = Intent(this, PickerActivity::class.java)
             pickerIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -255,9 +291,40 @@ class ClipboardService : Service() {
                     .build()
             }
             nm.notify(BIND_NOTIFICATION_ID, notification)
-            Logger.d("ClipboardService: bind app notification sent for [$appName]")
+            Logger.d("ClipboardService: bind app notification sent for [$appName], directLaunch=$directLaunched")
         } catch (e: Exception) {
             Logger.e("ClipboardService: failed to send notification: ${e.message}", e)
+        }
+    }
+
+    /**
+     * 直接把提醒卡片拉起来 —— 不再只依赖系统通知横幅。
+     *
+     * 华为 / 鸿蒙会吞掉横幅（实测 importance=4 也不弹），用户只能自己去抽屉里找通知；
+     * 所以当**已授予「显示在其他应用上层」(SYSTEM_ALERT_WINDOW)** 时直接 startActivity：
+     * 该权限同时也是“后台启动 Activity”的豁免条件，能绕开 BAL 限制。
+     * 没授权时不硬来（会被系统静默拦掉），只发通知，并在日志里写明原因。
+     */
+    private fun tryLaunchReminderActivity(appName: String): Boolean {
+        val canDrawOverlays =
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)
+        if (!canDrawOverlays) {
+            Logger.w(
+                "ClipboardService: overlay permission NOT granted, only notification is sent " +
+                    "(去「设置 → 应用 → 剪集 → 显示在其他应用上层」开启后就能直接弹提醒)"
+            )
+            return false
+        }
+        return try {
+            val intent = Intent(this, PickerActivity::class.java)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            intent.putExtra(PickerActivity.EXTRA_APP_NAME, appName)
+            startActivity(intent)
+            Logger.d("ClipboardService: PickerActivity launched directly (overlay permission granted)")
+            true
+        } catch (e: Exception) {
+            Logger.e("ClipboardService: direct launch failed: ${e.message}", e)
+            false
         }
     }
 
@@ -321,12 +388,14 @@ class ClipboardService : Service() {
         const val ACTION_CLIPBOARD_UPDATED = "com.example.clipboardmerger.CLIPBOARD_UPDATED"
         private const val PREFS_NAME = "clipboard_merger_settings"
         private const val KEY_BOUND_APP_PACKAGE = "bound_app_package"
-        private const val PICKER_COOLDOWN_MS = 120_000L
+        // 同一次“进入绑定 App”只提醒一次；相邻两次提醒的最短间隔（防抖动）
+        private const val PICKER_MIN_INTERVAL_MS = 15_000L
         private const val CHANNEL_ID = "clipboard_service_channel"
         private const val NOTIFICATION_ID = 1
-        // 渠道 ID 换新（老 ID "bind_app_channel" 的“无振动”属性不可修改，见 ISSUE-007）
-        private const val BIND_CHANNEL_ID = "bind_app_channel_v2"
+        // 渠道 ID 换新（属性创建后不可变：v2 没有声音 ⇒ 华为按“静默通知”处理，不给横幅，见 ISSUE-007）
+        private const val BIND_CHANNEL_ID = "bind_app_channel_v3"
         private const val LEGACY_BIND_CHANNEL_ID = "bind_app_channel"
+        private const val LEGACY_BIND_CHANNEL_ID_V2 = "bind_app_channel_v2"
         private const val BIND_NOTIFICATION_ID = 2
     }
 }

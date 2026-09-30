@@ -98,22 +98,27 @@ v1.79 对**同一 ID** `deleteNotificationChannel` + 重建，实测都无效（
 
 | 文件 | 改动 |
 |---|---|
-| `PickerActivity.kt` | 重写：**可见**半透明卡片页；`onWindowFocusChanged(true)` 后延迟 `400ms` 调 `showInputMethodPicker()`，再等 `1500ms` 若窗口焦点仍在（= 被忽略）补一次；窗口失焦后再回来 ⇒ 自动 `finish()`（回到抖音）；`60s` 兜底自动关闭 |
+| `PickerActivity.kt` | 重写：**可见**半透明卡片页；`onWindowFocusChanged(true)` 后延迟 `400ms` **只自动调一次** `showInputMethodPicker()`（自动补调 = 先 hide 再 show，会把选择器闪掉，见 `PIT-028`）；失焦 ≥1.5s 才判定“选择器弹过并已关闭”而 `finish()`（极短失焦当抖动忽略，避免把刚弹出的选择器一起带走）；`60s` 兜底自动关闭 |
 | `res/layout/activity_picker.xml` | 新建：遮罩 + 卡片 + 文案 + 三个按钮（弹出选择器 / 打开系统输入法设置 / 关闭） |
 | `res/values/themes.xml` | 新增 `Theme.JianJi.Picker`（`windowIsTranslucent` + 透明 windowBackground + 无标题） |
 | `res/values/colors.xml`、`res/values/strings.xml` | 新增 `picker_scrim` + 7 条文案 |
 | `AndroidManifest.xml` | `PickerActivity` 换 `Theme.JianJi.Picker`；新增 `USE_FULL_SCREEN_INTENT` 权限 |
 | `ClipboardService.kt` | 渠道 ID → `bind_app_channel_v2`（HIGH + 振动 + badge）并删掉 `bind_app_channel`；通知加 `setFullScreenIntent(pendingIntent, true)` + `VISIBILITY_PUBLIC`；启动时打一行诊断；通知 Intent 携带 App 名给提醒页 |
 
+> 2026-10-01 补记：v1.80（build 81）发布后发现仓库里 **`res/layout/activity_picker.xml` 与 `colors.xml` 的 `picker_scrim` 丢了**
+> （提交 `dfd9e7d` 未包含这两个文件），下一次构建直接报 `Unresolved reference: activity_picker`（见 `PIT-030`）；
+> 已补齐，并改用递增版本号出包（`v1.82` / build 83）以便和线上 v1.79 / v1.80 区分。
+
 ### 4.3 真机验证步骤（下次照做）
 
-1. 安装 v1.80 → 打开剪集 → 设置 → 绑定App → 选抖音（确认「使用情况访问权限」已开）
-2. 打开抖音：**期望**顶部出现悬浮横幅，或直接弹出「切换到剪集输入法」提醒卡片
-3. 点卡片上的「弹出输入法选择器」：**期望**系统输入法选择器出现；选「剪集」后卡片自动消失
-4. 若选择器仍不出现：日志会有两条 `showInputMethodPicker() called` + 一条 `window still focused ... picker may have been ignored`，
-   用卡片上的「打开系统输入法设置」手动切换（华为兜底）
-5. 要看的日志行：`notificationsEnabled=... importance=... shouldVibrate=...`、`bind app notification sent for [...]`、
-   `PickerActivity: onWindowFocusChanged hasFocus=true, attempts=0`、`showInputMethodPicker() called (attempt=1)`
+1. 安装新包 → 打开剪集 → 设置 → 绑定App → 选抖音（确认「使用情况访问权限」已开；保存后会弹「开启悬浮提醒权限」→ 点「去开启」把「显示在其他应用上层」打开）
+2. 打开抖音：**期望**只弹出一层「系统输入法选择器」（v1.84 起提醒页默认不可见）；选择器被拦时才会显示兜底卡片
+   - 想免点通知：装完先到「更多 → 悬浮提醒权限 → 去开启」，打开后再进抖音就是**自动弹提醒**
+3. 在系统选择器里选「剪集」→ 提示自动消失，回到抖音
+4. 回到抖音再进一次：**期望**再提醒一次（每次进入提醒一次；同一次进入不会重复弹）
+5. 要看的日志行：`canDrawOverlays=true`、`importance=4, ..., hasSound=true`、`bound app entered foreground, reminder gate reset`、
+   `PickerActivity launched directly (overlay permission granted)`、`showInputMethodPicker() called (source=auto, attempt=1)`、
+   `PickerActivity: picker shown & dismissed (...ms), finishing`（或兜底分支 `picker did not show ... revealing fallback card`）
 
 ---
 
@@ -154,12 +159,14 @@ no MOVE_TO_FOREGROUND   → 15s 内无前台切换事件
 | 常量 | 值 | 位置 |
 |---|---|---|
 | 检测间隔 | `5000L` ms | ClipboardService.kt `startForegroundAppCheck()` |
-| 冷却时间 | `120_000L` ms（2分钟） | ClipboardService.kt `PICKER_COOLDOWN_MS` |
+| 提醒门 | 每次进入绑定 App 提醒一次（离开前台即重置）+ `15_000L` 防抖 | ClipboardService.kt `PICKER_MIN_INTERVAL_MS` |
 | UsageEvents 窗口 | `15_000L` ms（15秒） | ClipboardService.kt `getForegroundPackage()` |
 | PickerActivity 自动关闭 | `60_000L` ms | PickerActivity.kt `AUTO_CLOSE_MS` |
-| 调选择器延迟 / 补一次 | `400L` / `1500L` ms | PickerActivity.kt `PICKER_DELAY_MS` / `RETRY_DELAY_MS` |
-| 渠道ID | `bind_app_channel_v2`（旧的 `bind_app_channel` 已删除） | ClipboardService.kt `BIND_CHANNEL_ID` |
+| 调选择器延迟 / 判定“选择器弹过” | `400L` / `250L` ms | PickerActivity.kt `PICKER_DELAY_MS` / `MIN_PICKER_VISIBLE_MS` |
+| 兜底卡片显示延迟 | `1_600L` ms（此前无失焦才显示） | PickerActivity.kt `CARD_FALLBACK_DELAY_MS` |
+| 渠道ID | `bind_app_channel_v3`（HIGH + **声音** + 振动；v1/v2 已删除） | ClipboardService.kt `BIND_CHANNEL_ID` |
 | 通知ID | `2` | ClipboardService.kt `BIND_NOTIFICATION_ID` |
+| 悬浮提醒权限 | `SYSTEM_ALERT_WINDOW`（开了才直接拉提醒卡片） | AndroidManifest.xml / ClipboardService.kt / MainActivity.kt |
 | Settings key | `bound_app_package` / `bound_app_label` | MainActivity.kt / ClipboardService.kt |
 
 ---
