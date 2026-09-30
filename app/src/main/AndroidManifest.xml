@@ -7,6 +7,15 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+        </intent>
+    </queries>
 
     <application
         android:allowBackup="true"
@@ -26,9 +35,21 @@
             </intent-filter>
         </activity>
 
+        <!-- 绑定App「切换输入法」提醒页：独立任务里的半透明浮层。
+             必须保留“可见的普通窗口”形态（可以拿到窗口焦点），
+             否则系统的输入法选择器调用会被 IMMS 忽略（见 memory-bank ISSUE-007） -->
+        <activity
+            android:name=".PickerActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:theme="@style/Theme.JianJi.Picker" />
+
         <service
             android:name=".ClipboardService"
-            android:exported="false" />
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <service
             android:name=".ClipboardInputMethodService"

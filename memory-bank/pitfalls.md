@@ -165,3 +165,11 @@
   `asset ... not found in release v1.53`，但同一条资产（id 583293306，state=uploaded）在 REST 里查得到。
 - 反例: 以为“`--clobber` 一定覆盖成功”；把 422 当成“权限 / 标签不存在”。
 - 自检: 同一版本**连跑两次** `gh-release.bat`，第二次不应再出现 422。
+
+## PIT-028 `showInputMethodPicker()` 静默失败：必须在“窗口已经拿到焦点”之后再调（根因，非华为特有）
+- 触发条件: 在 `onCreate`（窗口还没获得焦点）里调 `showInputMethodPicker()`；实测设备 华为 LIO-AN00m / SDK 31，但闸门在 AOSP 里，其它机型同样适用
+- 现象: 应用日志显示“已调用”（API 返回 void），但选择器不出现、无异常；系统侧只有一条 `Slog.w("Ignoring showInputMethodPickerFromClient of uid ...")`（`InputMethodManagerService.showInputMethodPickerFromClient()`）
+- 正确做法: ①本应用的 Activity 窗口**拿到焦点之后**再延迟几百 ms 调（`onWindowFocusChanged(true)` → `postDelayed(400L)`）：`canShowInputMethodPickerLocked()` 要求 `client == mCurFocusedWindowClient`，它只在 `startInputOrWindowGainedFocus` 成功后更新；②留手动兜底 `Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)`；③窗口不能是不可见的（要有真实、可获焦点的 Activity）
+- 反例: 在 `onCreate` 里直接调（窗口没焦点 ⇒ 被丢弃，还会以为“华为拦截”）；把“调用成功”当“已弹出”
+- 自检: `findstr /n "onWindowFocusChanged" app\src\main\java\com\example\clipboardmerger\PickerActivity.kt`（期望 1 处命中）+ 真机日志出现 `showInputMethodPicker() called (attempt=1)` 且选择器可见；`onCreate, showing input method picker` 这种“onCreate 里就调”的日志 ⇒ 复发
+- 首次记录: 2026-10-01 ／ 最近复核: 2026-10-01（定案：不是华为特有限制，是 IMMS 的“当前焦点窗口 client”闸门；修法见 `ISSUE-007`）

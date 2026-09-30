@@ -2,6 +2,17 @@
 
 > 由 `issues-solved.md` 归档的原文。新增归档按时间倒序插在最前面。
 
+## ISSUE-007 【归档于 2026-10-01】绑定App 旧症状链与版本演进（v1.75 → v1.79）
+
+- 症状链（版本演进）:
+  - v1.75: `showInputMethodPicker()` 后台调用 → 日志 `input method picker shown` → 华为吞掉不显示
+  - v1.77: 通知 → `ACTION_INPUT_METHOD_SETTINGS` → 用户点开后是"启用/关闭输入法"设置页，不是选择器弹窗
+  - v1.78: 通知 → 透明 `PickerActivity` → `showInputMethodPicker()` → PickerActivity 启动但 finish 太快，选择器不显示；通知渠道无振动 → 不悬浮
+  - v1.79: `deleteNotificationChannel` 重建 + `PickerActivity` 延迟 1.5s finish → 未见运行记录（该结论已作废：日志里其实有 v1.79 实跑记录）
+- 真机证据（`jianji_log_2026-10-01.txt`，v1.79）: `00:52:42.841 notification sent for [抖音]` → `00:53:01.517 PickerActivity: onCreate` → `.525 showInputMethodPicker 调用` → `00:53:03.109 destroyed`；无异常、选择器不出现。
+- 当时的（错误）结论: “华为拦截透明 Activity 弹对话框 / finish 太快”。真正根因（2026-10-01 定案）= IMMS 的 `canShowInputMethodPickerLocked()` 只认“当前焦点窗口 client”，调用发生在窗口获得焦点之前 ⇒ 被静默忽略；见 `issues-solved.md` ISSUE-007。
+
+
 ## ISSUE-001 【归档于 2026-09-23】`build.bat` 构建日志写不进去 —— 三次连环修复的完整过程
 
 - 状态: 已修复　首次记录: 2026-09-23

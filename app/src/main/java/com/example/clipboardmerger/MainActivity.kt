@@ -377,7 +377,11 @@ class MainActivity : AppCompatActivity() {
     private fun startClipboardService() {
         Logger.d("startClipboardService: start")
         val intent = Intent(this, ClipboardService::class.java)
-        startService(intent)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
         Logger.d("startClipboardService: started")
     }
 
@@ -792,7 +796,12 @@ class MainActivity : AppCompatActivity() {
 
         val pm = packageManager
         val mainIntent = Intent(Intent.ACTION_MAIN).apply { addCategory(Intent.CATEGORY_LAUNCHER) }
-        val activities = pm.queryIntentActivities(mainIntent, 0)
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PackageManager.MATCH_ALL
+        } else {
+            0
+        }
+        val activities = pm.queryIntentActivities(mainIntent, flags)
         val appEntries = activities
             .map { it.activityInfo }
             .distinctBy { it.packageName }

@@ -97,7 +97,13 @@ echo ============================================
 echo  正在清理构建产物...
 echo ============================================
 echo.
-call "D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" clean --no-daemon --console=plain
+call "D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" --stop --console=plain 2>nul
+timeout /t 2 /nobreak > nul
+call "D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" clean --console=plain
+if %ERRORLEVEL% neq 0 (
+    echo [警告] gradle clean 失败，尝试手动清理...
+    rmdir /s /q "build" 2>nul
+)
 rmdir /s /q ".gradle" 2>nul
 if exist "*.apk" del /q "*.apk" 2>nul
 if exist "*.aab" del /q "*.aab" 2>nul
@@ -119,7 +125,7 @@ echo ============================================
 echo.
 
 echo [1/5] 递增版本号...
-call "D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" incrementVersion --no-daemon --console=plain
+call "D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" incrementVersion --console=plain
 if %ERRORLEVEL% neq 0 (
     echo [错误] 版本号递增失败！Exit code=%ERRORLEVEL%
     call :countdown
@@ -128,11 +134,17 @@ if %ERRORLEVEL% neq 0 (
 echo       完成。
 
 echo [2/5] 清理旧产物...
-call "D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" clean --no-daemon --console=plain
+call "D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" --stop --console=plain 2>nul
+timeout /t 2 /nobreak > nul
+call "D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" clean --console=plain
+if %ERRORLEVEL% neq 0 (
+    echo [警告] gradle clean 失败，尝试手动清理...
+    rmdir /s /q "build" 2>nul
+)
 echo       完成。
 
 echo [3/5] 编译 APK（请耐心等待）...
-call "D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" assembleDebug --no-daemon --console=plain
+call "D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" assembleDebug --console=plain
 set BUILD_EXIT=%ERRORLEVEL%
 
 echo.

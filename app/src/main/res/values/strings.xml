@@ -66,4 +66,12 @@
     <string name="bind_app_status_bound">已绑定: %1$s</string>
     <string name="bind_app_status_none">绑定App: 未设置</string>
     <string name="bind_app_permission_required">需要「使用情况访问权限」才能检测前台应用，点击授权</string>
+    <string name="picker_title">切换到剪集输入法</string>
+    <string name="picker_message">%1$s 正在运行，建议切换到「剪集」输入法</string>
+    <string name="picker_message_default">建议切换到「剪集」输入法</string>
+    <string name="picker_hint">若没有弹出输入法选择器（部分华为 / 鸿蒙系统会拦截），请用下面的「打开系统输入法设置」手动把默认输入法设为剪集。</string>
+    <string name="picker_btn_switch">弹出输入法选择器</string>
+    <string name="picker_btn_settings">打开系统输入法设置</string>
+    <string name="picker_btn_close">关闭</string>
+
 </resources>

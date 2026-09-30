@@ -126,3 +126,16 @@
 - 反例 / 易误判: 以为「测试只调子过程、不会碰远端」；把非强制推送的 `already exists` 拒绝当成「远端本来就有这个 tag」
   （实际是同一事故**前一次**推送建的）；只看用例退出码（当时 9 个用例的退出码都「正常」）。
 - 相关: `PIT-025`、`ADR-011`、`ADR-009`；首次记录: 2026-09-23 ／ 最近复核: 2026-09-23（改后 9 用例全过，无主流程泄漏）
+
+## ISSUE-007 绑定App：输入法选择器不弹出 + 通知不悬浮（根因 = IMMS 的“当前焦点窗口”闸门）
+- 状态: 已修复（v1.80，代码已改 + 编译通过，待真机复验） — 根因由 AOSP 源码定死（见下）
+- 复发判据（静态，5 秒）: `findstr /n "onWindowFocusChanged" app\src\main\java\com\example\clipboardmerger\PickerActivity.kt`（期望 1 处命中）+ `findstr /n "bind_app_channel_v2" app\src\main\java\com\example\clipboardmerger\ClipboardService.kt`（期望命中）；出现“onCreate 里就直接 showInputMethodPicker()”或渠道 ID 又变回 `bind_app_channel` ⇒ 复发。真机判据: 绑定抖音 → 打开抖音 → ①顶部出现提醒（横幅或提醒页）②点按钮后弹出选择器（日志出现 `showInputMethodPicker() called (attempt=1)`）
+- 根因（AOSP 源码证据）: `InputMethodManagerService.canShowInputMethodPickerLocked()`（Android 12 / LineageOS 19.1 `InputMethodManagerService.java:3680-3693`）只在 ①`client == mCurFocusedWindowClient`（调用方就是“当前焦点窗口”）②或调用方 uid 拥有当前输入法 时才返回 true；否则 `showInputMethodPickerFromClient()`（同文件 `3696-3714`）只打一句 `Slog.w("Ignoring showInputMethodPickerFromClient of uid ...")` 后 return —— **应用侧无异常、无返回值**。而 `mCurFocusedWindowClient` 只在 `startInputOrWindowGainedFocus` 成功后赋值（同文件 `3503-3505`），也就是“窗口拿到焦点”之后。
+  - 落在本项目: v1.78 / v1.79 都在 `PickerActivity.onCreate` 里（启动后约 8ms）就调 `showInputMethodPicker()`，此时窗口还没拿到焦点 ⇒ 调用必然被丢弃。不是华为独有的拦截（PIT-028 的旧结论按本条修正）。
+- 证据（真机日志 `jianji_log_2026-10-01.txt`，v1.79 实跑；交接文档旧结论“未见 v1.79 运行记录”已过期）: `00:52:42.841 bind app notification sent for [抖音]` → 用户点通知 `00:53:01.517 PickerActivity: onCreate` → `.525 showInputMethodPicker()` 调用 → `00:53:03.109 destroyed`（1.5s 延迟到点），全程无异常、选择器不出现 ⇒ 与“被 IMMS 静默忽略”完全吻合。
+- 修法（v1.80）: ①`PickerActivity` 改成**可见**的半透明卡片页（`Theme.JianJi.Picker` + `activity_picker.xml`）：在 `onWindowFocusChanged(true)` 之后延迟 400ms 才调 `showInputMethodPicker()`，再等 1.5s 若窗口焦点仍在（说明被忽略）补一次；附「弹出输入法选择器 / 打开系统输入法设置 / 关闭」三个兜底按钮；选择器弹出会让本页失焦，焦点回来即 `finish()`（回到抖音），另加 60s 兜底自动关闭。
+  ②通知换新渠道 ID `bind_app_channel_v2`（HIGH + 振动 + `setShowBadge(true)`）并删掉老渠道 `bind_app_channel`（渠道属性创建后不可变，对同一 ID `delete+重建` 无效）；通知加 `setFullScreenIntent(intent, true)`（设备在用→悬浮横幅，息屏/锁屏→直接拉起提醒页）+ `USE_FULL_SCREEN_INTENT` 权限；③服务启动时打一行诊断 `notificationsEnabled / bindChannel / importance / shouldVibrate`（下次真机直接看这行）。
+- 历史症状链（v1.75 → v1.79 版本演进，已归档）: v1.75 后台 `showInputMethodPicker()` 被吞 → v1.77 通知跳 `ACTION_INPUT_METHOD_SETTINGS`（打开的是设置页不是选择器）→ v1.78/v1.79 透明 `PickerActivity` + `deleteNotificationChannel`；原文见 `archive/issues-solved-archive.md`
+- 涉及文件: `ClipboardService.kt`、`PickerActivity.kt`、`activity_picker.xml`、`themes.xml`、`colors.xml`、`strings.xml`、`AndroidManifest.xml`、`MainActivity.kt`
+- 反例 / 易误判: ①把 `showInputMethodPicker()`“调用成功”当“已弹出”（它是 void，被忽略时零反馈）②把根因写成“华为拦截透明 Activity / finish 太快”（v1.78/v1.79 的旧结论）③以为 `deleteNotificationChannel` + 重建能改旧渠道属性。兜底（华为实在不行）: `Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)`。
+- 相关: `PIT-028`、`ADR-012`、`handover-bind-app.md`　首次记录: 2026-10-01 ／ 最近复核: 2026-10-01（v1.80：重写 PickerActivity + 换渠道 ID + 全屏 Intent，`gradle :app:assembleDebug` 通过，待真机复验）

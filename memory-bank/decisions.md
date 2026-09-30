@@ -119,3 +119,13 @@
   ④开头**自我重启一次**（`PIT-026`：新 cmd 的起始代码页即 65001）+ 注释行保持 ASCII 兜底 —— 新控制台下 0 垃圾报错；
   ⑤**日志**：复用 `tools\tee-log.ps1`（`ADR-010` 的 tee 包装器）—— 每条输出**先落盘 `build\logs\gh-release_<ts>.log`（UTF-8 BOM、AutoFlush）再回显控制台**，
   跑完打印日志路径并回传退出码；缺 `tee-log.ps1` 时退回「重定向 + 结束 `type`」的降级分支（同 `build.bat`）。
+
+## ADR-012 绑定App 提醒：通知换新渠道 ID + 全屏 Intent，提醒页改“可见卡片 + 拿到焦点后再调选择器”
+- 日期: 2026-10-01 | 状态: 已采纳
+- 背景: 华为 LIO-AN00m(SDK 31) 上 v1.75~v1.79 的“通知 + 透明 Activity 弹输入法选择器”全线没让用户看到提醒（`ISSUE-007`）。
+- 决策: ①通知渠道**换新 ID** `bind_app_channel_v2`（HIGH + 振动 + badge），并删掉旧 ID `bind_app_channel` —— 渠道属性创建后不可变，改代码或对同一 ID delete+重建都无效；
+  ②通知加 `setFullScreenIntent(pendingIntent, true)`（+ `USE_FULL_SCREEN_INTENT`）：设备在用时会退化成悬浮横幅，息屏/锁屏时直接拉起提醒页；
+  ③`PickerActivity` 从“透明 + onCreate 里调选择器 + 1.5s 自动 finish”改成“可见半透明卡片 + `onWindowFocusChanged(true)` 后延迟 400ms 调、1.5s 无果补一次 + 三个手动兜底按钮 + 焦点回来即 finish（+ 60s 兜底关闭）”。
+- 理由: 选择器能否弹出由 IMMS 的“当前焦点窗口 client”决定（`canShowInputMethodPickerLocked()`，与厂商无关）⇒ 必须先把窗口焦点拿到手；提醒的可见性不能只靠渠道属性（不可变）和普通通知。
+- 备选与为何不选: 沿用旧渠道 ID + delete&重建（v1.79 实测无效，被用户静音过的渠道也不会恢复）；继续用透明 Activity（拿不到/来不及拿焦点，且用户看不到任何提示）；只靠 `ACTION_INPUT_METHOD_SETTINGS`（能用但把人甩到设置页，仅作兜底）；直接 `setInputMethod()` 切输入法（系统只允许“当前输入法 / 系统”调用，普通应用做不到）。
+- 影响 / 约束: 换渠道 ID ⇒ 老渠道的静音设置作废、系统设置里会多一条“输入法切换提醒”（旧 ID 已删除）；`setFullScreenIntent` 在息屏/锁屏时会直接弹提醒页（本就是这个功能的意图）；今后改 `PickerActivity` 的调用时机必须同步更新 `ISSUE-007` 的复发判据。

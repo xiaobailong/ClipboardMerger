@@ -28,4 +28,6 @@
 | `'C:\Program' is not recognized`；一行 `if/else` 后接 `& 命令` 不执行 | `PIT-023`、`PIT-024` | P |
 | 只补发 / 重发 GitHub Release、`gh-release.bat` 用法 | `ADR-011` | D |
 | `bat` 调 `bat` 不带 `call`；中文注释被错解析；抽段测试误跑主流程 | `PIT-025`、`PIT-026`、`ISSUE-006` | P + I |
-| 工具栏“三个点”下拉 / 关于弹框的构建信息 | `ADR-008` | D |
+| 工具栏"三个点"下拉 / 关于弹框的构建信息 | `ADR-008` | D |
+| 绑定App：输入法选择器不弹出 + 通知不悬浮（根因 = IMMS 焦点闸门） | `ISSUE-007`、`PIT-028`、`ADR-012` | I + P + D |
+| `showInputMethodPicker()`“调用成功但不弹” | `PIT-028` | P |
