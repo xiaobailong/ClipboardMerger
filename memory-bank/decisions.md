@@ -141,3 +141,12 @@
   通知记录照旧提交（`startForeground` 成立、服务不被杀），但系统不展示；渠道属性不可变 ⇒ 两条渠道 ID 二选一、切换时 `stopService` + 重新拉起服务重建渠道与通知。风险：个别 ROM 可能因“服务没有可见通知”缩短后台存活时间，因此做成用户可关的开关并在说明里点明“发现剪贴板不再收集就关掉它”。
 - 追加（2026-10-01 v1.88，用户反馈“一键清理后 App 不做自拉起，后台监控消失”）: 新增 `KeepAlive`（自拉起三件套：`BootReceiver` 开机/更新、`onTaskRemoved` + `AlarmManager` + `PendingIntent.getForegroundService`、输入法服务启动时补拉）+ 「更多 → 后台保活设置」（说明页 + 打开应用信息 + 申请忽略电池优化，`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`）。设计取舍：**把输入法服务当锚点**是最可靠的自救点（用户点输入框系统必然拉起剪集输入法），因此把"补拉后台服务"挂在它身上；被系统 force-stop 后不做无意义的轮询自拉起（Android 不允许），改为在说明页讲清系统侧该怎么设。
 
+## ADR-013 鸿蒙（HarmonyOS）分支：原生 HAP 输入法，与 Android 工程并存
+- 日期: 2026-10-05 | 状态: 已采纳（分支 `harmonyos`）
+- 背景: 用户主力机换成鸿蒙 7（HarmonyOS NEXT），在**卓易通**（安卓兼容容器）里装本 APK 后**不被识别成输入法**（`PIT-034`）。鸿蒙已不原生跑 APK，输入法只能由原生 HAP 通过 `InputMethodExtensionAbility` 注册（官方《实现一个输入法应用》：`type: "inputMethod"` + `metadata: ohos.extension.input_method`）。
+- 决策: ①新建分支 `harmonyos`（分支名 = 鸿蒙的英文名）；②仓库内新增 `harmony/` DevEco 子工程（根 Gradle 不 include，两套构建互不影响）；③`entry` 模块 = 输入法 Extension（键盘）+ 设置页 UIAbility；④键盘 UI 移植 Android 版 IME 面板语义（点一条=插入、多选=合并插入、退格/回车/刷新/清空、单条删除），历史存储用 preferences（去重规则、上限 5000 对齐 `ClipboardRepository`）；⑤bundleName 与 Android 版相同（`com.example.clipboardmerger`）；⑥日志沿用「hilog + 沙箱文件 + 持久化开关」（对齐 `Logger`）。
+- 理由: 只有原生 HAP 能拿到「默认输入法」身份；`harmony/` 独立目录 ⇒ Android 侧构建/发布流程零改动。
+- 备选与为何不选: 继续改 Android 侧（Manifest / targetSdk / 权限）期待容器放行 —— 容器内的 IME 注册不到宿主鸿蒙，改多少都没用；做成 AppGallery 上架包 —— 当前自用，先走 DevEco 自动签名。
+- 影响与约束: ①输入法 Extension 受「基础访问模式」约束**不能联网** ⇒ GitHub 同步只能在 `EntryAbility` 侧实现；②API 12+ 读剪贴板需 `ohos.permission.READ_PASTEBOARD`（受限 user_grant，可能要 ACL），拿不到就只剩键盘功能，设置页会显示错误码；③鸿蒙版版本号在 `AppScope/app.json5`，与 `version.properties` 各自管；④**本机没有鸿蒙 SDK**，ArkTS 代码只做了静态检查，待 DevEco 编译 + 真机复验（未验证点列在 `harmony/README.md`）。
+- 复用入口: `harmony/README.md`（构建 / 签名 / 启用输入法 / 与 Android 版差异）
+

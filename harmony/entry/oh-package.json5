@@ -1,0 +1,9 @@
+{
+  "name": "entry",
+  "version": "1.0.0",
+  "description": "剪集输入法（鸿蒙版）主模块",
+  "main": "",
+  "author": "",
+  "license": "",
+  "dependencies": {}
+}

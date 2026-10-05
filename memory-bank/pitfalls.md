@@ -218,3 +218,19 @@
 - 反例: 以为“自启动 = 一定会自动回来”；以为 `START_STICKY` 能救一切（被 force-stop 或整进程被杀后不会回调）；在 `onTaskRemoved` 里直接 `startService`。
 - 自检: 一键清理后点一个输入框 → 日志应出现 `KeepAlive: background service start requested`，随后 `ClipboardService.onCreate` 与 `reminder gate reset` 再次出现。
 - 首次记录: 2026-10-01
+
+## PIT-034 鸿蒙 7「卓易通」里装的 APK 永远成不了系统输入法（只有原生 HAP 有解）
+- 触发条件: HarmonyOS NEXT（用户机 = 鸿蒙 7）用卓易通（安卓兼容容器）安装本应用，去系统输入法列表里找「剪集」。
+- 现象: 能装能启动，但**不会被识别成输入法**（鸿蒙的输入法列表里没有它）；`BIND_INPUT_METHOD` + `@xml/input_method_config` 只在容器内部的安卓里生效。
+- 正确做法: 鸿蒙上必须写**原生输入法** —— `InputMethodExtensionAbility` + `module.json5` 里 `"type": "inputMethod"`、`metadata: { name: "ohos.extension.input_method", resource: "$profile:input_method_config" }`；剪贴板历史用 `@kit.BasicServicesKit` 的 pasteboard 采集（API 12+ 需 `ohos.permission.READ_PASTEBOARD`）。本仓库实现见 `harmony/`（`ADR-013`）。
+- 反例: 改 `AndroidManifest.xml`（权限 / `input_method_config.xml` / targetSdk）期待容器放行；把 `showInputMethodPicker()` 时序或透明 Activity 当根因（那是 `ISSUE-007` 的安卓侧问题，与容器无关）。
+- 自检: 鸿蒙「设置 → 系统和更新 → 输入法」里能看到「剪集输入法」= 原生 HAP 生效；如果只有卓易通里能起来 ⇒ 必然看不到。
+- 相关: `ADR-013`、`ISSUE-007`（安卓侧同类症状、根因不同）　首次记录: 2026-10-05
+
+## PIT-035 `fetch_web_content` 抓长文件会中间截断 ⇒ 单请求 + 找官方小文件/`.d.ts`
+- 触发条件: 抓 20KB 以上的源码或文档（例：`js-apis-inputmethodengine.md` 230KB、样例 `KeyboardController.ets` 30KB）。
+- 现象: 返回「开头 + 结尾」、**中间被吞**（提示 `[truncated N chars]`），被吞的往往正是关键片段（如 `createPanel` 的调用）；一次发多个 URL 时每个拿到的更少。
+- 正确做法: ①一次只发 1 个 URL；②优先抓**按类拆分的官方文档**（`js-apis-inputmethod-panel.md` 只有 2KB，`PanelInfo/PanelType/PanelFlag` 定义全在里面）或先抓 `Readme-CN.md` 索引找小文件；③要 SDK 声明就去抓 `openharmony/interface_sdk-js` 的 `.d.ts`；④Bing/duckduckgo 在中文技术词上常返回无关结果（甚至词典），别依赖。
+- 反例: 拿截断后的片段猜 API（`inputMethodEngine.FLAG_DEFAULT` 这类不存在的常量就是这么臆造出来的）；反复重抓同一个大文件。
+- 自检: 关键定义是否来自**完整文件**（size 小、或首尾连续、无 `[truncated]` 提示）。
+- 首次记录: 2026-10-05

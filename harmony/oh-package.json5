@@ -1,0 +1,8 @@
+{
+  "modelVersion": "5.0.0",
+  "name": "clipboardmerger-harmony",
+  "version": "1.0.0",
+  "description": "剪集（鸿蒙版）—— 剪贴板历史输入法",
+  "dependencies": {},
+  "devDependencies": {}
+}
