@@ -2,7 +2,6 @@ import { abilityAccessCtrl, bundleManager, common, Permissions } from '@kit.Abil
 import { BusinessError, deviceInfo } from '@kit.BasicServicesKit';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import { inputMethod } from '@kit.IMEKit';
-import { notificationManager } from '@kit.NotificationKit';
 import { commonEventManager } from '@kit.BasicServicesKit';
 import { EventBus } from '../model/EventBus';
 import settings from '@ohos.settings';
@@ -158,6 +157,14 @@ struct Index {
       const e = err as BusinessError;
       this.imeInfo = `输入法检测失败（${e.code}）`;
     }
+  }
+
+  /** 清理日志（日志弹层按钮）：删掉已有全部日志文件 */
+  private clearLogs(): void {
+    const n: number = Logger.clearAllLogs();
+    this.logOn = Logger.isEnabled();
+    this.notice = n > 0 ? `已清理 ${n} 个日志文件` : '没有可清理的日志文件';
+    Logger.d(`clearLogs: removed ${n}`);
   }
 
   /**
@@ -316,14 +323,6 @@ struct Index {
     ImeSettings.init(this.host());
     this.refreshIme();
     this.refreshPerms();
-    // KeepAlive 的静态 enabled 默认 false，必须先 init（读偏好）再取状态，
-    // 否则「关于」里定时补活永远显示"关"（本轮就踩了这个）
-    KeepAlive.init(this.host());
-    this.keepAliveOn = KeepAlive.isEnabled();
-    this.keepAliveTick = KeepAlive.lastTickTime();
-    if (this.keepAliveOn) {
-      KeepAlive.schedule();
-    }
     this.swReport = ImeSettings.lastSwitch();
     // 订阅键盘侧事件：键盘进程采集到新内容就广播 ⇒ 若当前输入法不是剪集，立刻提醒切换
     if (this.histSub === undefined) {
@@ -333,7 +332,6 @@ struct Index {
           if (e.text !== '') {
             ClipboardStore.addText(e.text);
           }
-          this.maybeRemindSwitchIme('clipboard');
         } else if (e.op === 'clear') {
           ClipboardStore.clear();
           this.notice = '已随键盘侧清空历史';
@@ -382,11 +380,7 @@ struct Index {
     } catch (err) {
       this.permPaste = false;
     }
-    try {
-      this.permNotify = notificationManager.isNotificationEnabledSync();
-    } catch (err) {
-      this.permNotify = false;
-    }
+    this.permNotify = false;
     Logger.d(`perms: pasteboard=${this.permPaste}, notify=${this.permNotify}`);
   }
 
@@ -592,17 +586,12 @@ struct Index {
             .fontSize(12)
             .fontColor(this.p().textPrimary)
             .width('100%')
-          Text(`切换目标：${this.targetLabel}`)
+          Text(`剪贴板权限：${this.permPaste ? '已授权' : '未授权'}`)
             .fontSize(12)
             .fontColor(this.p().textPrimary)
             .width('100%')
             .margin({ top: 2 })
-          Text(`剪贴板权限：${this.permPaste ? '已授权' : '未授权'}　|　通知：${this.permNotify ? '已授权' : '未授权'}　|　定时补活：${this.keepAliveOn ? '开' : '关'}${this.keepAliveTick === '' ? '' : '（' + this.keepAliveTick + '）'}`)
-            .fontSize(12)
-            .fontColor(this.p().textPrimary)
-            .width('100%')
-            .margin({ top: 2 })
-          Text(`键盘高度：屏高 × ${this.kbRate.toFixed(2)}　|　历史条数：${this.items.length}`)
+          Text(`历史条数：${this.items.length}`)
             .fontSize(12)
             .fontColor(this.p().textPrimary)
             .width('100%')
@@ -625,6 +614,16 @@ struct Index {
             .fontColor(this.p().textSecondary)
             .width('100%')
             .margin({ bottom: 6 })
+          Row() {
+            this.textButton('清理日志', this.p().danger, () => {
+              this.clearLogs();
+            })
+            this.textButton('导出到 Download', this.p().accent, () => {
+              this.exportLog();
+            })
+          }
+          .width('100%')
+          .margin({ top: 4, bottom: 4 })
           Text('日志设置').fontSize(16).fontWeight(FontWeight.Bold).margin({ bottom: 10 })
           Row() {
             Text('日志输出').fontSize(14).layoutWeight(1)
@@ -646,13 +645,6 @@ struct Index {
             .fontColor('#7A828E')
             .width('100%')
             .margin({ top: 8 })
-          Row() {
-            this.textButton('导出日志到 Download', '#1A6FD4', () => {
-              this.exportLog();
-            })
-          }
-          .width('100%')
-          .margin({ top: 8 })
         } else if (this.dialog === 'perm') {
           Text('权限设置').fontSize(16).fontWeight(FontWeight.Bold).margin({ bottom: 4 })
           Text('鸿蒙把权限分散在系统设置里，这里集中入口 + 说明')
@@ -682,25 +674,6 @@ struct Index {
 
             Row() {
               Column() {
-                Text('通知权限').fontSize(14).fontColor(this.p().textPrimary)
-                Text('用于「提醒」；鸿蒙横幅是否弹出由系统策略决定').fontSize(11).fontColor(this.p().textSecondary)
-              }
-              .layoutWeight(1)
-              .alignItems(HorizontalAlign.Start)
-              if (this.permNotify) {
-                Text('已授权 ✓').fontSize(13).fontColor(this.p().statusOnFg)
-              } else {
-                this.filledButton('申请', this.p().statusOnFg, () => {
-                  this.enableNotify();
-                })
-              }
-            }
-            .width('100%')
-            .padding({ top: 10, bottom: 10 })
-            .border({ width: { top: 1 }, color: '#1F000000' })
-
-            Row() {
-              Column() {
                 Text('输入法设置（启用/切换剪集）').fontSize(14).fontColor(this.p().textPrimary)
                 Text('剪集必须在这里被勾选为可用输入法').fontSize(11).fontColor(this.p().textSecondary)
               }
@@ -708,21 +681,6 @@ struct Index {
               .alignItems(HorizontalAlign.Start)
               this.filledButton('去设置', this.p().accent, () => {
                 this.openImeSettings();
-              })
-            }
-            .width('100%')
-            .padding({ top: 10, bottom: 10 })
-            .border({ width: { top: 1 }, color: '#1F000000' })
-
-            Row() {
-              Column() {
-                Text('自启动 / 后台活动 / 电池').fontSize(14).fontColor(this.p().textPrimary)
-                Text('换成手动管理并允许后台活动，否则切走就被杀').fontSize(11).fontColor(this.p().textSecondary)
-              }
-              .layoutWeight(1)
-              .alignItems(HorizontalAlign.Start)
-              this.filledButton('应用详情', this.p().accent, () => {
-                this.openAppDetail();
               })
             }
             .width('100%')
@@ -921,12 +879,6 @@ struct Index {
                 value: '日志',
                 action: () => {
                   this.dialog = 'log';
-                }
-              },
-              {
-                value: '后台保活设置',
-                action: () => {
-                  this.dialog = 'keepalive';
                 }
               },
               {

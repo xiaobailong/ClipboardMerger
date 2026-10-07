@@ -2,8 +2,8 @@
   "app": {
     "bundleName": "com.example.clipboardmerger",
     "vendor": "example",
-    "versionCode": 1000004,
-    "versionName": "1.92",
+    "versionCode": 1000008,
+    "versionName": "1.96",
     "icon": "$media:app_icon",
     "label": "$string:app_name"
   }

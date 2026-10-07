@@ -49,14 +49,6 @@
         ]
       },
       {
-        "srcEntry": "./ets/keepalive/KeepAliveAbility.ets",
-        "name": "KeepAliveAbility",
-        "label": "$string:ime_label",
-        "description": "$string:keepalive_desc",
-        "type": "workScheduler",
-        "exported": false
-      },
-      {
         "srcEntry": "./ets/InputMethodExtensionAbility/InputMethodService.ets",
         "name": "InputMethodService",
         "label": "$string:ime_label",

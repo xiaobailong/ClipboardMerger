@@ -150,6 +150,45 @@ export class Logger {
     }
   }
 
+  /**
+   * 清空全部日志文件（日志弹层「清理日志」按钮）
+   * 只删 `JianJi/jianji_log_*.txt`，删完若日志开着会立刻重建当前文件（写一行标记），
+   * 这样用户点完能立刻看到"新日志已开始"而不是文件不存在。
+   * 返回删除的文件数。
+   */
+  static clearAllLogs(): number {
+    let dir: string = '';
+    const src: string = Logger.logFile !== '' ? Logger.logFile : Logger.expected;
+    const idx: number = src.lastIndexOf('/');
+    if (idx > 0) {
+      dir = src.substring(0, idx);
+    }
+    if (dir === '') {
+      return 0;
+    }
+    let n: number = 0;
+    try {
+      const names: string[] = fs.listFileSync(dir);
+      for (let i = 0; i < names.length; i++) {
+        const name: string = names[i];
+        if (!name.startsWith(LOG_FILE_PREFIX) || !name.endsWith('.txt')) {
+          continue;
+        }
+        try {
+          fs.unlinkSync(`${dir}/${name}`);
+          n++;
+        } catch (inner) {
+          // 单个文件失败不影响其它
+        }
+      }
+    } catch (err) {
+      Logger.w('clearAllLogs failed');
+      return n;
+    }
+    Logger.write('DEBUG', `clearAllLogs: removed ${n} file(s)`);
+    return n;
+  }
+
   /** 只保留最近 7 天（对齐 Android cleanOldLogs） */
   private static cleanOldLogs(dir: string): void {
     try {
