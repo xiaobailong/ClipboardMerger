@@ -151,6 +151,48 @@ export class Logger {
   }
 
   /**
+   * 列出已有日志文件（名称 + 大小），供"日志设置"里展示 / 清理。
+   * 返回形如 `["jianji_log_2026-10-07.txt (5.4 KB)", …]`，**最新在前**。
+   * 注意：App 与键盘进程是独立沙箱 ⇒ 各自列的是自己那份。
+   */
+  static listLogs(): string[] {
+    const out: string[] = [];
+    let dir: string = '';
+    const src: string = Logger.logFile !== '' ? Logger.logFile : Logger.expected;
+    const idx: number = src.lastIndexOf('/');
+    if (idx > 0) {
+      dir = src.substring(0, idx);
+    }
+    if (dir === '') {
+      return out;
+    }
+    try {
+      const names: string[] = fs.listFileSync(dir);
+      const matched: string[] = [];
+      for (let i = 0; i < names.length; i++) {
+        const n: string = names[i];
+        if (n.startsWith(LOG_FILE_PREFIX) && n.endsWith('.txt')) {
+          matched.push(n);
+        }
+      }
+      matched.sort();
+      for (let i = matched.length - 1; i >= 0; i--) {
+        let size: string = '';
+        try {
+          const st = fs.statSync(`${dir}/${matched[i]}`);
+          size = ` (${Math.round(st.size / 102.4) / 10} KB)`;
+        } catch (inner) {
+          size = '';
+        }
+        out.push(`${matched[i]}${size}`);
+      }
+    } catch (err) {
+      Logger.w('listLogs failed');
+    }
+    return out;
+  }
+
+  /**
    * 清空全部日志文件（日志弹层「清理日志」按钮）
    * 只删 `JianJi/jianji_log_*.txt`，删完若日志开着会立刻重建当前文件（写一行标记），
    * 这样用户点完能立刻看到"新日志已开始"而不是文件不存在。

@@ -39,6 +39,8 @@ struct Keyboard {
   @State targetBundle: string = '';
   /** 键盘进程自己的日志开关（独立沙箱，与 App 侧各一份） */
   @State logOn: boolean = true;
+  /** 键盘进程自己的日志文件列表（名称 + 大小，最新在前） */
+  @State logFiles: string[] = [];
   /** 上次粘贴之后新增的条数（>0 就在键盘里显示「待粘贴」提醒条） */
   @State newCount: number = 0;
 
@@ -164,6 +166,7 @@ struct Keyboard {
       this.targetBundle = t === undefined ? '' : t.bundle;
       this.loadImeRows();
       this.logOn = keyboardController.logEnabled();
+      this.refreshLogFiles();
     }
     this.showSettings = !this.showSettings;
     this.imePick = false;
@@ -274,6 +277,24 @@ struct Keyboard {
     } catch (err) {
       Logger.w('publishSnapshot failed');
     }
+  }
+
+  /** 刷新「键盘进程日志」文件列表（键盘独立沙箱 ⇒ 列的是它自己那份） */
+  private refreshLogFiles(): void {
+    try {
+      this.logFiles = Logger.listLogs();
+      Logger.d(`Keyboard.refreshLogFiles: ${this.logFiles.length} file(s)`);
+    } catch (err) {
+      this.logFiles = [];
+    }
+  }
+
+  /** 清理键盘进程的日志文件 */
+  private clearImeLogs(): void {
+    const n: number = Logger.clearAllLogs();
+    this.logOn = keyboardController.logEnabled();
+    this.refreshLogFiles();
+    this.toast(n > 0 ? `已清理 ${n} 个日志文件` : '没有可清理的日志文件');
   }
 
   /** 面板里的轻提示：键盘进程没有独立界面，toast 是最直接的结果反馈 */
@@ -461,6 +482,26 @@ struct Keyboard {
             }
             .width('100%')
             .padding({ top: 4, bottom: 6 })
+
+            Row() {
+              this.imeKey('清理日志', 1, () => {
+                this.clearImeLogs();
+              })
+              Text(`共 ${this.logFiles.length} 个文件`)
+                .fontSize(10)
+                .fontColor(this.p().imeStatusFg)
+                .layoutWeight(1)
+                .textAlign(TextAlign.End)
+            }
+            .width('100%')
+            .padding({ top: 2, bottom: 2 })
+            ForEach(this.logFiles, (f: string) => {
+              Text(f)
+                .fontSize(10)
+                .fontColor(this.p().imeStatusFg)
+                .width('100%')
+                .padding({ left: 4, top: 1, bottom: 1 })
+            }, (f: string) => f)
 
             Text('提示：键盘进程与 App 是独立沙箱 —— 剪贴板历史、皮肤、日志各存一份。所以「切换目标 / 键盘高度 / 键盘皮肤 / 键盘日志」都只在本页设置才生效。')
               .fontSize(10)
