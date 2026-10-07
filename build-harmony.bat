@@ -172,7 +172,12 @@ for /f %%i in ('node "%VER_TOOL%" code') do set "H_VCODE=%%i"
 echo       鸿蒙版本: v%H_VNAME% (build %H_VCODE%)
 
 set "HAP_FILE="
-for /r "%HARMONY_DIR%\entry\build" %%f in (*.hap) do set "HAP_FILE=%%f"
+set "HAP_UNSIGNED="
+for /f "delims=" %%f in ('dir /b /s "%HARMONY_DIR%\entry\build\*.hap" 2^>nul') do (
+    echo %%f | findstr /i "unsigned" >nul
+    if errorlevel 1 (set "HAP_FILE=%%f") else (set "HAP_UNSIGNED=%%f")
+)
+if not defined HAP_FILE set "HAP_FILE=%HAP_UNSIGNED%"
 if not defined HAP_FILE (
     echo [错误] 没找到 .hap 产物（检查 harmony\entry\build\default\outputs）
     pause

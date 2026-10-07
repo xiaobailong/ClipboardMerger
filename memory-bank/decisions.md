@@ -149,4 +149,5 @@
 - 备选与为何不选: 继续改 Android 侧（Manifest / targetSdk / 权限）期待容器放行 —— 容器内的 IME 注册不到宿主鸿蒙，改多少都没用；做成 AppGallery 上架包 —— 当前自用，先走 DevEco 自动签名。
 - 影响与约束: ①输入法 Extension 受「基础访问模式」约束**不能联网** ⇒ GitHub 同步只能在 `EntryAbility` 侧实现；②API 12+ 读剪贴板需 `ohos.permission.READ_PASTEBOARD`（受限 user_grant，可能要 ACL），拿不到就只剩键盘功能，设置页会显示错误码；③鸿蒙版版本号在 `AppScope/app.json5`，与 `version.properties` 各自管；④**本机没有鸿蒙 SDK**，ArkTS 代码只做了静态检查，待 DevEco 编译 + 真机复验（未验证点列在 `harmony/README.md`）。
 - 复用入口: `harmony/README.md`（构建 / 签名 / 启用输入法 / 与 Android 版差异）
+- 追加（2026-10-05 首次真编译 + 发布）: 工具链 = 华为 **command-line-tools v26.0.0.851**（含 hvigor 6.26.8 / ohpm / node / `sdk\default\{openharmony,hms}`，HarmonyOS SDK API 26）；`build-harmony.bat` 端到端验证通过（自动找到工具链 → `BUILD SUCCESSFUL` → 产物收成 `build\harmony\JianJi-HarmonyOS-<版本>.hap`，默认不碰 git）；已推送分支 `harmonyos` + tag `harmony-v1.89` + Release（附件为**未签名** HAP）。真机安装仍缺**华为签名**：路径①DevEco 自动签名（GUI，需账号）；路径②AGC 网页手动签名（本地 keytool 生成 .p12+CSR → 换 .cer + 调试 Profile(.p7b) → `sdk\...\toolchains\lib\hap-sign-tool.jar` 签）。API 26 与旧文档的 4 处接口差异见 `PIT-036`。
 

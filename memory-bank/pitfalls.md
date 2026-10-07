@@ -234,3 +234,18 @@
 - 反例: 拿截断后的片段猜 API（`inputMethodEngine.FLAG_DEFAULT` 这类不存在的常量就是这么臆造出来的）；反复重抓同一个大文件。
 - 自检: 关键定义是否来自**完整文件**（size 小、或首尾连续、无 `[truncated]` 提示）。
 - 首次记录: 2026-10-05
+
+
+## PIT-036 鸿蒙本机构建：用「命令行工具」即可（不必装 DevEco）；API 26 的 IME 接口与旧文档有 4 处不一致
+- 触发条件: 想在本机编译/打包鸿蒙工程，但没有（或不装）DevEco Studio。
+- 现象: hvigor + HarmonyOS SDK 只随 DevEco / 命令行工具分发；公共 npm 与华为云镜像上 `@ohos/hvigor` **全部 404**（实测 `registry.npmjs.org`、`registry.npmmirror.com`、`repo.huaweicloud.com/repository/npm`）⇒ 光靠 npm 装不出构建环境。
+- 正确做法: ①装华为 **command-line-tools**（本机 `D:\Tools\DevTools\hmos\command-line-tools`，v26.0.0.851：`bin\hvigorw.bat` + `hvigor\` + `ohpm` + `tool\node` + `sdk\default\{openharmony,hms}`）；②`build-harmony.bat` 会自动识别它（可用 `HOS_CLT` 覆盖），也可 `set "DEVECO_HOME=<工具链目录>"`；③`bin\hvigorw.bat` 自己设 `DEVECO_NODE_HOME` / `DEVECO_SDK_HOME`，**不用**手工指 SDK；④签名工具/默认证书在 `sdk\default\openharmony\toolchains\lib\`（`hap-sign-tool.jar`、`OpenHarmony.p12`、`Unsgned*ProfileTemplate.json`），装机工具 `toolchains\hdc.exe`。
+- API 26 实测与旧文档（API 12 前后）不一致的 4 处（一律以本地 `sdk\...\ets\api\*.d.ts` 为准）:
+  1. `compatibleSdkVersion`/`targetSdkVersion` 写 **`"26.0.0"`**（平台版本号）。写 `"26.0.0(26)"` 或 `"5.0.0(12)"` 直接失败：`Error Code: 00308018 api version parameter is illegal! Expected format: <major>[.<minor>][.<patch>]`。
+  2. `createPanel` **不在** `inputMethodEngine` 命名空间上，而是 `inputMethodEngine.getInputMethodAbility().createPanel(ctx, info)`，**返回 `Promise<Panel>`**（先 await/.then 拿到 panel 再 `setUiContent`；直接 `this.panel.setUiContent()` 会报 `Object is possibly 'undefined'`）。
+  3. `InputMethodAbility.on('inputStop', cb)` 的回调**无参数**（只有 `on('inputStart')` 是 `(kbController, inputClient)`）。
+  4. `PanelFlag` 有两套：`@ohos.inputMethod.Panel` 里是 `FLAG_FIXED`，而 `InputMethodAbility.createPanel` 要的 `inputMethodEngine.PanelFlag` 是 **`FLG_FIXED`**（`PanelInfo.flag` 可省略，默认固定态）⇒ 统一用 `inputMethodEngine.PanelInfo/PanelType` 最省事。附：`abilityAccessCtrl.PermissionRequestResult` 经 `@kit.AbilityKit` 导不出来，改成 `const r = await at.requestPermissionsFromUser(...)` 让编译器推断。
+- 反例: 照网页文档/官方样例（API 12 时代）逐字抄 —— 上面 4 处全踩；以为"没有 DevEco 就没法本机构建"；把 `READ_PASTEBOARD` 的 `ArkTS:WARN To use this API, you need to apply for the permissions` 当错误（声明过权限就是 WARN，不是失败）。
+- 自检: `build-harmony.bat` 走到 `BUILD SUCCESSFUL` 且 `build\harmony\*.hap` 存在；编译 0 ERROR（仅允许 READ_PASTEBOARD 的 WARN）。
+- 相关: `ADR-013`、`PIT-035`　首次记录: 2026-10-05
+- 追加(2026-10-07): 同一条链上的两个坑见 `PIT-037`（DevEco 自动签名后 product 缺 `"signingConfig": "default"` ⇒ 出 unsigned 包；装机报 `install already exist`）。

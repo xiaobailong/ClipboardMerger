@@ -70,6 +70,65 @@ harmony/
 2. 打开本目录 `harmony/`（**不要开仓库根**）→ `File → Project Structure → Signing Configs` → 勾选 **Automatically generate signature**（需账号实名。这一步会把签名材料写进 `harmony/build-profile.json5`，之后命令行构建同样能出**已签名** HAP）
 3. 确认 SDK 已下载：`File → Settings → SDK`（API 12 及以上）
 4. 回仓库根跑 `build-harmony.bat`；要发布就跑 `build-harmony.bat release`
+5. 勾完自动签名**再跑一次** `build-harmony.bat`：签名材料（`harmony\signature\` 下的 `.p12/.cer/.p7b`，已 gitignore）由 hvigor 自动使用，产物从 `entry-default-unsigned.hap` 变成 `entry-default-signed.hap`，收集成 `build\harmony\JianJi-HarmonyOS-<版本>.hap` —— 只有这个包才能 `hdc install` 到真机
+   - 说明：日常构建用的是已装好的**命令行工具**（`D:\Tools\DevTools\hmos\command-line-tools`），DevEco 只用来做「自动签名」这一步；DevEco 装在非默认目录时告诉脚本 `set "DEVECO_HOME=<DevEco 目录>"` 也不影响（签名配置在工程里，跟用哪套 hvigor 无关）
+
+## 首次 DevEco 自动签名后：务必检查这一行（实测踩到）
+
+DevEco 26 的「自动签名」只写 `signingConfigs` 数组，**不会**给 product 加引用，于是 hvigor 会打印
+`WARN: No signingConfig found for product default`、`SignHap` 秒过、产物仍是 `entry-default-unsigned.hap`（根本装不上真机）。
+在 `harmony/build-profile.json5` 的 `products[0]` 里补一行就好了：
+
+```json5
+"signingConfig": "default",
+```
+
+配套两点：
+
+- 自动签名会把**材料绝对路径 + 加密口令**（`0000001A…`，机器绑定）写回该文件 ⇒ `harmony/build-profile.json5` 已 gitignore；
+  仓库里的基线是 **`harmony/build-profile.template.json5`**（新机器：`copy harmony\build-profile.template.json5 harmony\build-profile.json5` 再签名）。
+- 装机若报 `failed to install bundle. code:9568276 error: install already exist`：先
+  `hdc uninstall com.example.clipboardmerger`，再 `hdc install <hap>`（`-r` 在这台设备上不顶用）。
+
+## 签名材料放哪（证书可复用 / Profile 项目专属）
+
+| 材料 | 放哪 | 能否跨 App 复用 |
+| --- | --- | --- |
+| 证书 `.cer` + 私钥 `.p12` + 密码 | `D:\Tools\DevTools\hmos\signature\`（**公共证书目录**，本机工具目录，不在任何 git 仓库里） | ✅ 可给多个鸿蒙 App、多个 Profile 复用 |
+| **Profile `.p7b`** | `harmony\signature\`（本项目；gitignore 只放行该目录的 `README.md`） | ❌ 绑死包名 `com.example.clipboardmerger` |
+| 调试设备 UDID 列表 | 写在 Profile 的 `debug-info.device-ids` 里，在 AGC 维护 | 换手机/加手机要回 AGC 加设备并重新下载 `.p7b` |
+
+公共目录里已经生成好：`hmos-dev.p12`（别名 `hmos-dev`）、`hmos-dev.csr`（待上传 AGC 换证书）、`hmos-dev.pass`（密钥库密码），用法见 `D:\Tools\DevTools\hmos\signature\README.md`。
+
+DevEco「自动签名」会把材料直接写进 `harmony\signature\`，也能用；建议把它的 `.p12/.cer` 拷一份到公共目录，下一个项目就能复用（Profile 仍要按新包名重新申请）。
+
+### 备用：不装 DevEco 的手动签名（参数已用本机 SDK 核实，随时可切）
+
+`OH_TC` = `D:\Tools\DevTools\hmos\command-line-tools\sdk\default\openharmony\toolchains`；`java` 用 `D:\Tools\DevTools\Java\JDK\jdk-21.0.10-oracle\bin\java.exe`。
+
+```bat
+set "JAVA=D:\Tools\DevTools\Java\JDK\jdk-21.0.10-oracle\bin\java.exe"
+set "OH_TC=D:\Tools\DevTools\hmos\command-line-tools\sdk\default\openharmony\toolchains"
+set "SHARED=D:\Tools\DevTools\hmos\signature"
+
+REM 1) 公共证书已生成：%SHARED%\hmos-dev.p12（别名 hmos-dev）+ .csr + .pass（密码）
+REM    要重来（换密钥/证书过期）就重新 generate-keypair + generate-csr，命令见 %SHARED%\README.md
+
+REM 2) AGC 网页：建项目 + 添加应用（包名 com.example.clipboardmerger）
+REM    → 证书管理上传 %SHARED%\hmos-dev.csr 换「调试证书」→ 下载存成 %SHARED%\hmos-dev.cer
+REM    → 添加调试设备（UDID: hdc shell bm get --udid）
+REM    → Profile 管理建「调试 Profile」→ 下载 .p7b 放到 harmony\signature\
+
+REM 3) 本地签名 + 校验 + 装机（<密码> 见 %SHARED%\hmos-dev.pass）
+"%JAVA%" -jar "%OH_TC%\lib\hap-sign-tool.jar" sign-app -mode localSign -keyAlias "hmos-dev" -keyPwd <密码> ^
+  -appCertFile "%SHARED%\hmos-dev.cer" -profileFile "harmony\signature\<包名>.p7b" ^
+  -inFile "harmony\entry\build\default\outputs\default\entry-default-unsigned.hap" ^
+  -signAlg SHA256withECDSA -keystoreFile "%SHARED%\hmos-dev.p12" -keystorePwd <密码> ^
+  -outFile "harmony\signature\entry-default-signed.hap" -compatibleVersion 26 -signCode "1"
+"%JAVA%" -jar "%OH_TC%\lib\hap-sign-tool.jar" verify-app -inFile "harmony\signature\entry-default-signed.hap" ^
+  -outCertChain "harmony\signature\verify.cer" -outProfile "harmony\signature\verify.p7b"
+"%OH_TC%\hdc.exe" install "harmony\signature\entry-default-signed.hap"
+```
 
 ## 已知未验证点（本机没有鸿蒙 SDK，只做了静态检查）
 
