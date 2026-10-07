@@ -296,4 +296,17 @@
 - 正确做法: 每次构建后 `findstr "BUILD SUCCESSFUL" / "install bundle successfully" / "===DONE"` 三件套确认；缺 install 就手动 `hdc install -r harmony\entry\build\default\outputs\default\entry-default-signed.hap`（用 `-r` 保留数据，别 `uninstall` 否则 GitHub token 等配置全丢）。
 - 反例: 只看 `BUILD SUCCESSFUL` 就当装机完成。
 - 自检: 日志末尾有 `===DONE`，且 `inst*.txt` 里有 `install bundle successfully`。
+- 追加(2026-10-07，本会话总结的 3 条铁律):
+  1. **构建与装机必须分成两条命令**：`call build-harmony.bat`（一条）→ `hdc install -r …hap & hdc shell aa force-stop …`（另一条）。
+  2. **一条命令里串联多个步骤，必然在"命令回合"边界被截断**：`b5/b6/b7` 都编成功但对应的 `install` 从没执行（`i8/i9.txt` 根本没生成）；`rel2/rel3` 的 commit/push 也是这么丢的。
+  3. **构建进行中禁止改源码**：`rel4` 时我先删了 `import { notificationManager }`、随后才修 `refreshPerms()`，编译正好卡在中间 ⇒ `Cannot find name 'notificationManager'` → `BUILD FAILED`（好在脚本失败即终止，没有坏提交）。
+  4. **长任务用"单条脱离进程脚本"才跑得完**：`start "" /b cmd /c "call build-harmony.bat release > tmp\rel.log 2>&1"` —— `rel5` 就是这样一次走完 6 步（commit `15ec2f4` → push `harmonyos` → tag `harmony-v1.96` → release 上传 HAP 443KB）。
+- 首次记录: 2026-10-07
+
+## PIT-045 手机 hdc 显示 `Unauthorized` 且不弹授权框 ⇒ 换掉本机 hdc 密钥再重连（`hdc kill` 无效）
+- 触发条件: 换数据线 / 重启手机 / 长时间未连之后，`hdc list targets` 输出 `<serial>\tUnauthorized`；`hdc install` 报 `[Fail][E000003] The device unauthorized. The user denied the access for the device.`
+- 现象: 手机上**根本不弹**"允许 USB 调试"框；反复 `hdc kill`、重插数据线都没用（手机侧对**当前这把密钥**记了"已拒绝"）。
+- 正确做法: ①把本机密钥改名备份：`ren "%USERPROFILE%\.harmony\hdckey" hdckey.bak` + `ren "%USERPROFILE%\.harmony\hdckey.pub" hdckey.pub.bak`；②`hdc kill`；③等 2~4 秒再 `hdc list targets`（手机会重新授权）。实测换完密钥**无需点框即恢复**（`list targets` 只输出序列号，没有 `Unauthorized`）。
+- 反例: 反复插拔/换线；`hdc kill` 后立刻 `list targets`（状态没刷新就以为还是坏的）。
+- 自检: `hdc list targets` 输出**只有序列号**；`hdc shell echo ok` 返回 `ok`；`hdc install -r <hap>` 出现 `install bundle successfully`。
 - 首次记录: 2026-10-07

@@ -6,12 +6,14 @@
 >
 > **鸿蒙原生版现状**（2026-10-07，真机 HLS-AL00 / API 26 实测）：
 > - 已实现：键盘面板五键 +「▼ 收起」+ 历史列表；键盘内 **⚙ 设置**（切换目标 / 键盘高度 / 键盘皮肤 / 键盘进程日志，全部键盘自持）；
->   权限设置整合（已授权绿标、一键跳系统页）；GitHub 拉取/保存 + 「网络诊断」；后台保活（WorkScheduler 定时补活 + 心跳）；
->   剪贴板历史跨进程一致（公共事件 `add`/`remove`/`clear`/`snapshot`）；"当前输入法不是剪集就提醒切换"（复制时刻 + 定时兜底）。
-> - **平台限制（实测，不是实现缺陷）**：①输入法 Extension 跑在**独立沙箱**，读不到 App 的 `preferences`
->   ⇒ 键盘相关设置只在键盘内 ⚙ 生效；②DataShare、无障碍、`bundleState`/`usageStatistics` 前台应用检测在本版本
->   对普通应用**不可用** ⇒ "进某个 App 才提醒"改为"复制时刻 + 定时兜底"触发。
->   细节见 [`harmony/README.md`](harmony/README.md) 的「实测结论」与 `memory-bank/pitfalls.md` 的 `PIT-039`~`PIT-044`。
+>   权限设置（剪贴板读取权限 / 输入法设置，已授权绿标 + 一键跳系统页）；GitHub 拉取/保存 + 「网络诊断」；
+>   剪贴板历史跨进程一致（公共事件 `add`/`remove`/`clear`/`snapshot`）；日志（开关 + **清理日志** + 导出到 Download）。
+> - **已移除的功能（平台不可实现，非缺陷）**：绑定App、通知提醒、后台保活（WorkScheduler 定时补活）、自启动/电池权限项 ——
+>   这些都依赖"检测前台应用"或"后台常驻"，而本版本对普通应用**不提供**这些能力，保留只会误导，故整体删除。
+> - **平台限制（实测）**：①输入法 Extension 跑在**独立沙箱**，读不到 App 的 `preferences` ⇒ 键盘相关设置只在键盘内 ⚙ 生效；
+>   ②DataShare（无服务端类）、无障碍（鸿蒙 7 无入口）、`bundleState`/`usageStatistics`（需系统权限 `BUNDLE_ACTIVE_INFO`）
+>   三条路均不可用 ⇒ 无法实现"进入某个 App 时提醒"。
+>   细节见 [`harmony/README.md`](harmony/README.md) 的「实测结论」与 `memory-bank/pitfalls.md` 的 `PIT-039`~`PIT-045`。
 
 ---
 

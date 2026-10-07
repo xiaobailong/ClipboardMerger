@@ -140,6 +140,7 @@ REM 3) 本地签名 + 校验 + 装机（<密码> 见 %SHARED%\hmos-dev.pass）
 4. **⚠️ preferences 沙箱（本项目最贵的一课）**：输入法 Extension 受官方「基础访问模式」约束，**跑在独立进程 + 独立沙箱** ⇒ 它读不到 App 写的 `preferences`（反之亦然）。表现：App 里设「切换目标=小艺」，键盘「切换」却切到百度；App 改高度键盘不变；键盘写的报告/日志 App 永远读不到。
    **定论**：凡是"键盘要用的设置"（切换目标 / 键盘高度 / 键盘皮肤 / 键盘日志开关）**一律放在键盘面板内的 ⚙ 设置**里，由键盘进程自己读写；跨进程通信只能走 **公共事件**（本项目 `model/EventBus.ets`，事件 `com.example.clipboardmerger.HIST_SYNC`：`add`/`remove`/`clear`/`snapshot`）。
    - **DataShare 走不通**：本版本 SDK 里 `DataShareExtensionAbility` 类根本不存在（全 api 目录只有 `bundleManager` 的 AbilityType 枚举里出现过该字符串），`@ohos.data.dataShare.d.ts` 里连 `DataShareHelper` 都没有 ⇒ 不要按老文档做。
-   - **无障碍 / 前台应用检测走不通**：鸿蒙 7 设置里没有无障碍服务入口；`@ohos.resourceschedule.usageStatistics.d.ts` 是空壳（无 `queryBundleEvents`）；老的 `@ohos.bundleState.d.ts` 要系统权限 `ohos.permission.BUNDLE_ACTIVE_INFO`。⇒ 「进某 App 自动提醒」改用**能观测到的时机**：①键盘侧采集到新内容的 `add` 事件；②WorkScheduler 定时兜底；判定条件用公开 API `inputMethod.getCurrentInputMethod()` 是否等于本包名。
+   - **无障碍 / 前台应用检测走不通**：鸿蒙 7 设置里没有无障碍服务入口；`@ohos.resourceschedule.usageStatistics.d.ts` 是空壳（无 `queryBundleEvents`）；老的 `@ohos.bundleState.d.ts` 要系统权限 `ohos.permission.BUNDLE_ACTIVE_INFO`。
+     **结论**：无法实现"进入某个 App 时提醒" ⇒ 依赖它的**绑定App、通知提醒、后台保活（WorkScheduler）、自启动/电池权限项已全部移除**（保留只会在 UI 上误导用户）。
 5. **调试铁律**：改完输入法代码，装机后必须 `hdc shell aa force-stop com.example.clipboardmerger`（`kill -9` 会被拒），否则键盘进程一直跑旧代码；`ps -ef | grep clipboardmerger` 可对比 `:inputMethod` 进程启动时间与安装时间。
 6. **键盘进程日志**：要在 `KeyboardController.onCreate` 里显式 `Logger.init(扩展上下文)`，否则 IME 侧日志只进 hilog、不落文件（文件只会有 App 进程的行）。

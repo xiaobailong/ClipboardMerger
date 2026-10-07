@@ -476,19 +476,13 @@ struct Keyboard {
         .backgroundColor(this.p().imeItemBg)
       }
 
-      Text(this.items.length > 0 ? `📋 ${this.items.length} 条记录  ·  点这里换肤` : '📋 剪贴板监听  ·  点这里换肤')
+      Text(this.items.length > 0 ? `📋 ${this.items.length} 条记录` : '📋 剪贴板监听中')
         .fontSize(11)
         .fontColor(this.p().imeStatusFg)
         .width('100%')
         .textAlign(TextAlign.Center)
         .padding({ top: 4, bottom: 6 })
         .backgroundColor(this.p().imeStatusBg)
-        .onClick(() => {
-          // 键盘内直接换肤（持久化到 preferences，App 侧下次进入也会读到）
-          const next: string = ThemeStore.current() === THEME_ANDROID ? THEME_HARMONY : THEME_ANDROID;
-          ThemeStore.set(next);
-          Logger.d(`ime skin toggle -> ${next}`);
-        })
     }
     .width('100%')
     .height(this.kbH)

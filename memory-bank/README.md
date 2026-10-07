@@ -45,6 +45,7 @@
 | 面板内设置被裁掉 ⇒ `Scroll` + `scrollBar(Auto)`，别改面板高度 | `PIT-042` | P |
 | ArkTS：三元不能当组件 / `bindMenu` 插项别重复 `{` / 重复 import | `PIT-043` | P |
 | `deploy.bat` 的 install 被新命令打断（`^C`）⇒ 必须确认装机 | `PIT-044` | P |
+| hdc 报 `Unauthorized` 且手机不弹授权框 ⇒ 换掉 `~/.harmony/hdckey*` 再重连 | `PIT-045` | P |
 | 鸿蒙本机构建（命令行工具 / API 26 IME 接口 4 处差异） | `PIT-036` | P |
 | 鸿蒙自动签名后仍出 unsigned 包 / 装机 already exist | `PIT-037` | P |
 | ArkUI 保留成员名（`@State tabIndex` / `@Builder key()` 撞基类）⇒ 编译出一堆假错误 | `PIT-038` | P |
