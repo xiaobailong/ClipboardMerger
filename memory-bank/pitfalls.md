@@ -304,6 +304,7 @@
   4. **长任务用"单条脱离进程脚本"才跑得完**：`start "" /b cmd /c "call build-harmony.bat release > tmp\rel.log 2>&1"` —— `rel5` 就是这样一次走完 6 步（commit `15ec2f4` → push `harmonyos` → tag `harmony-v1.96` → release 上传 HAP 443KB）。
   5. **（2026-10-07 补充）脱离方式的实测结论**：`node spawn(detached:true)` 起的 hvigor **仍被掐**（日志停在 `CompileArkTS` 前后两次，进程随后消失）；改用 cmd 的 `start "" /b cmd /c node tmp\run_build.js <label>` 才稳定跑完。且务必用 `spawnSync` 包一层把退出码写进日志（`=== BG_EXIT=0 ===`），否则「被杀」和「跑完」在日志上长得一样；另：`CompileArkTS` 完成会写任务缓存，**下次构建会显示 UP-TO-DATE** —— 判断「新代码到底编进去没有」要查产物（`…/pages/Index.ts`、`modules.abc`、HAP 里有没有新符号名），别只看 `BUILD SUCCESSFUL`。
   6. **（2026-10-07 复现）`deploy-harmony.bat` 后台跑时同样会被"下一条命令"打断**：日志停在 `force stop process successfully.` 之后，tee 写的退出码是 `-1073741510`（= `STATUS_CONTROL_C_EXIT`），后面的版本校验 / `aa start` 没执行。**脚本每步校验的设计奏效**：`install bundle successfully` 与 force-stop 已被确认 ⇒ 装机结果是好的，缺的只是收尾步骤（重跑一次或手动 `hdc shell bm dump` 即可）。做法：后台跑装机/构建时不要在同一终端发别的命令，等日志出现 `===DONE===` 再动。
+  7. **（2026-10-07）`build-harmony.bat`（release）会留下 hvigor 守护进程，它继承 stdout 重定向句柄 ⇒ 我的 `tmp\rel.log` 删不掉**（`rmdir` 报 `The process cannot be accessed because it is being used by another process`）。判据：`Get-CimInstance Win32_Process -Filter "Name='node.exe'"` 里有两个 22:43 创建、命令行含 `hvigor` 的 node（脚本自己跑的是带 daemon 的 hvigorw.bat）。修法：`taskkill /f /pid <pid> /t` 掉守护进程（安全，下次构建自动重启），随后 `tmp` 可清空；不想留守护进程就用 `hvigorw … --no-daemon`（本项目自测构建一直用它）。
 - 首次记录: 2026-10-07
 
 ## PIT-045 手机 hdc 显示 `Unauthorized` 且不弹授权框 ⇒ 换掉本机 hdc 密钥再重连（`hdc kill` 无效）
