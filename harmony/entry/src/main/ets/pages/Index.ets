@@ -592,7 +592,7 @@ struct Index {
             .fontSize(12)
             .fontColor(this.p().textPrimary)
             .width('100%')
-          Text(`切换目标：${this.targetLabel}　|　绑定App：${this.bindLabel.replace('绑定App: ', '').replace('已绑定: ', '')}`)
+          Text(`切换目标：${this.targetLabel}`)
             .fontSize(12)
             .fontColor(this.p().textPrimary)
             .width('100%')
@@ -737,44 +737,6 @@ struct Index {
               .width('100%')
               .margin({ top: 10 })
           }
-        } else if (this.dialog === 'bindapp') {
-          Text('绑定应用').fontSize(16).fontWeight(FontWeight.Bold).margin({ bottom: 4 })
-          Text('鸿蒙拿不到"检测前台应用"的普通权限 ⇒ 改成手动填写 App 名字（用于提醒文案/绑定记录），已内置抖音')
-            .fontSize(12)
-            .fontColor(this.p().textSecondary)
-            .width('100%')
-            .margin({ bottom: 8 })
-          Row() {
-            this.textButton('抖音', this.p().accent, () => {
-              this.bindName = '抖音';
-              this.bindLabel = '已绑定: 抖音';
-              this.notice = '已设置绑定：抖音';
-            })
-            this.textButton('微信', this.p().accent, () => {
-              this.bindName = '微信';
-              this.bindLabel = '已绑定: 微信';
-              this.notice = '已设置绑定：微信';
-            })
-            this.textButton('清空', this.p().textSecondary, () => {
-              this.bindName = '';
-              this.bindLabel = '绑定App: 未设置';
-              this.notice = '已清空绑定';
-            })
-          }
-          .width('100%')
-          TextInput({ text: $$this.bindName, placeholder: '手动输入 App 名字（改完自动应用）' })
-            .fontSize(13)
-            .margin({ top: 8, bottom: 6 })
-            .onChange((v: string) => {
-              const n: string = v.trim();
-              this.bindLabel = n === '' ? '绑定App: 未设置' : `已绑定: ${n}`;
-              this.notice = n === '' ? '' : `已自动应用绑定：${n}`;
-            })
-          Text('说明：真正的"进入该 App 自动提醒"需要无障碍/前台检测能力，鸿蒙暂未放行 ⇒ 暂时只做到「记录 + 靠上面的通知提醒」。')
-            .fontSize(11)
-            .fontColor(this.p().textSecondary)
-            .width('100%')
-            .margin({ top: 8 })
         } else if (this.dialog === 'keepalive') {
           Text('后台保活 / 提醒').fontSize(16).fontWeight(FontWeight.Bold).margin({ bottom: 10 })
           Text('提醒（原「提醒设置」已并入这里）')
@@ -962,12 +924,6 @@ struct Index {
                 }
               },
               {
-                value: '绑定App',
-                action: () => {
-                  this.dialog = 'bindapp';
-                }
-              },
-              {
                 value: '后台保活设置',
                 action: () => {
                   this.dialog = 'keepalive';
@@ -1077,10 +1033,6 @@ struct Index {
         () => {
           this.showImePicker();
         })
-
-      this.statusBar(this.bindLabel, this.p().bindBg, this.p().bindFg, () => {
-        this.dialog = 'bindapp';
-      })
 
       if (this.notice.length > 0) {
         Text(this.notice)
