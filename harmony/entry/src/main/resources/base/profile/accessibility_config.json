@@ -1,0 +1,11 @@
+{
+  "accessibilityCapabilities": [
+    "retrieve"
+  ],
+  "accessibilityAbilityTypes": [
+    "all"
+  ],
+  "notificationInfo": {
+    "needNotification": false
+  }
+}

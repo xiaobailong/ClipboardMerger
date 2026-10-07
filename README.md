@@ -2,7 +2,16 @@
 
 一个 Android 剪贴板历史记录收集工具，通过注册系统输入法（IME）获取后台剪贴板监听权限，解决 Android 10+ 对普通应用后台读取剪贴板的限制。支持将收集到的内容通过 GitHub API 同步到远程仓库。
 > 鸿蒙（HarmonyOS NEXT）用户：本 APK 在鸿蒙上**无法被识别成输入法**（卓易通容器里的 IME 注册不到系统），
-> 请看原生版本 [`harmony/README.md`](harmony/README.md)。
+> 请看原生版本 [`harmony/README.md`](harmony/README.md)（HAP 输入法，功能 1:1 移植，已真机验证）。
+>
+> **鸿蒙原生版现状**（2026-10-07，真机 HLS-AL00 / API 26 实测）：
+> - 已实现：键盘面板五键 +「▼ 收起」+ 历史列表；键盘内 **⚙ 设置**（切换目标 / 键盘高度 / 键盘皮肤 / 键盘进程日志，全部键盘自持）；
+>   权限设置整合（已授权绿标、一键跳系统页）；GitHub 拉取/保存 + 「网络诊断」；后台保活（WorkScheduler 定时补活 + 心跳）；
+>   剪贴板历史跨进程一致（公共事件 `add`/`remove`/`clear`/`snapshot`）；"当前输入法不是剪集就提醒切换"（复制时刻 + 定时兜底）。
+> - **平台限制（实测，不是实现缺陷）**：①输入法 Extension 跑在**独立沙箱**，读不到 App 的 `preferences`
+>   ⇒ 键盘相关设置只在键盘内 ⚙ 生效；②DataShare、无障碍、`bundleState`/`usageStatistics` 前台应用检测在本版本
+>   对普通应用**不可用** ⇒ "进某个 App 才提醒"改为"复制时刻 + 定时兜底"触发。
+>   细节见 [`harmony/README.md`](harmony/README.md) 的「实测结论」与 `memory-bank/pitfalls.md` 的 `PIT-039`~`PIT-044`。
 
 ---
 

@@ -23,6 +23,10 @@
     {
       "name": "reason_read_pasteboard",
       "value": "用于收集你复制过的文字，生成剪贴板历史"
+    },
+    {
+      "name": "keepalive_desc",
+      "value": "定时补活：到点兜底采集一次剪贴板"
     }
   ]
 }

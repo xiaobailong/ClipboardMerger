@@ -130,10 +130,16 @@ REM 3) 本地签名 + 校验 + 装机（<密码> 见 %SHARED%\hmos-dev.pass）
 "%OH_TC%\hdc.exe" install "harmony\signature\entry-default-signed.hap"
 ```
 
-## 已知未验证点（本机没有鸿蒙 SDK，只做了静态检查）
+## 实测结论（真机验证过，替换掉早期的"已知未验证点"）
 
+> 设备：HLS-AL00 / API 26；工具链：命令行工具 v26.0.0.851。以下每条都经过 `hdc` + 真机日志验证。
 
-1. **面板 API**：`inputMethodEngine.createPanel(context, { type: PanelType.SOFT_KEYBOARD, flag: PanelFlag.FLAG_FIXED })` 与 `panel.setUiContent(...)` 按官方《实现一个输入法应用》与《@ohos.inputMethod.Panel》写的；若 DevEco 报类型错，改 `KeyboardController.ets` 里那一处即可。
-2. **面板高度**：页面根节点写死 `PANEL_HEIGHT_VP = 300`（`InputMethodExtensionAbility/pages/Index.ets`）。真机上若键盘区域偏大/偏小，可用 `panel.resize(width, height)`（单位 px，屏宽可用 `display.getDefaultDisplaySync().width`）。
-3. **剪贴板权限**：`READ_PASTEBOARD` 是受限权限（需要 ACL）。如果签名 profile 里没带上，`requestPermissionsFromUser` 会直接报错 —— 设置页会把错误码显示出来，便于判断。
-4. **preferences 沙箱**：官方文档提到 Extension 可能以独立进程/沙箱运行。若真机上设置页读不到输入法收集的历史，就改成用 DataShare / 统一数据对象在 Extension 与 UIAbility 之间共享。
+1. **面板创建**：`inputMethodEngine.getInputMethodAbility().createPanel(ctx, { type: PanelType.SOFT_KEYBOARD })` 返回 `Promise<Panel>`，**必须先 await 拿 panel 再 `setUiContent`**；`PanelFlag` 要用 `inputMethodEngine` 的 `FLG_FIXED`（`@ohos.inputMethod` 里那套 `FLAG_FIXED` 不可用于 createPanel）。
+2. **面板高度**：`resize(width,height)`（**px**）要在 **`setUiContent()` 之后**调用才有效，且 `inputStart`/`keyboardShow` 各补一次；页面根节点高度用 `px2vp(屏高 × 比例)` 撑住（面板尺寸跟随内容）。比例要存在**键盘进程自己的** preferences 里（见下条），改完 `resize` 当场生效。
+3. **剪贴板权限**：`READ_PASTEBOARD` 需要 ACL；本项目签名 profile 已带，`requestPermissionsFromUser` 实测直接 granted。
+4. **⚠️ preferences 沙箱（本项目最贵的一课）**：输入法 Extension 受官方「基础访问模式」约束，**跑在独立进程 + 独立沙箱** ⇒ 它读不到 App 写的 `preferences`（反之亦然）。表现：App 里设「切换目标=小艺」，键盘「切换」却切到百度；App 改高度键盘不变；键盘写的报告/日志 App 永远读不到。
+   **定论**：凡是"键盘要用的设置"（切换目标 / 键盘高度 / 键盘皮肤 / 键盘日志开关）**一律放在键盘面板内的 ⚙ 设置**里，由键盘进程自己读写；跨进程通信只能走 **公共事件**（本项目 `model/EventBus.ets`，事件 `com.example.clipboardmerger.HIST_SYNC`：`add`/`remove`/`clear`/`snapshot`）。
+   - **DataShare 走不通**：本版本 SDK 里 `DataShareExtensionAbility` 类根本不存在（全 api 目录只有 `bundleManager` 的 AbilityType 枚举里出现过该字符串），`@ohos.data.dataShare.d.ts` 里连 `DataShareHelper` 都没有 ⇒ 不要按老文档做。
+   - **无障碍 / 前台应用检测走不通**：鸿蒙 7 设置里没有无障碍服务入口；`@ohos.resourceschedule.usageStatistics.d.ts` 是空壳（无 `queryBundleEvents`）；老的 `@ohos.bundleState.d.ts` 要系统权限 `ohos.permission.BUNDLE_ACTIVE_INFO`。⇒ 「进某 App 自动提醒」改用**能观测到的时机**：①键盘侧采集到新内容的 `add` 事件；②WorkScheduler 定时兜底；判定条件用公开 API `inputMethod.getCurrentInputMethod()` 是否等于本包名。
+5. **调试铁律**：改完输入法代码，装机后必须 `hdc shell aa force-stop com.example.clipboardmerger`（`kill -9` 会被拒），否则键盘进程一直跑旧代码；`ps -ef | grep clipboardmerger` 可对比 `:inputMethod` 进程启动时间与安装时间。
+6. **键盘进程日志**：要在 `KeyboardController.onCreate` 里显式 `Logger.init(扩展上下文)`，否则 IME 侧日志只进 hilog、不落文件（文件只会有 App 进程的行）。

@@ -39,6 +39,13 @@
 | 静音/振动/免打扰下通知整条消失 ⇒ 提醒要绕开通知系统（悬浮窗+振动） | `PIT-032` | P |
 | 鸿蒙/卓易通里 APK 不被识别成输入法；鸿蒙原生输入法怎么做 | `PIT-034`、`ADR-013` | P + D |
 | 抓长文档/长源码被中间截断、查不到 IME API 定义 | `PIT-035` | P |
+| IME Extension 独立沙箱：App 侧设置键盘读不到（切到百度/高度不变/报告看不到） | `PIT-039` | P |
+| 改完输入法代码不 `aa force-stop` ⇒ 老进程跑旧代码（`kill -9` 不允许） | `PIT-040` | P |
+| 键盘面板改高度：`resize` 要在 `setUiContent` 之后；尺寸由系统按内容算 | `PIT-041` | P |
+| 面板内设置被裁掉 ⇒ `Scroll` + `scrollBar(Auto)`，别改面板高度 | `PIT-042` | P |
+| ArkTS：三元不能当组件 / `bindMenu` 插项别重复 `{` / 重复 import | `PIT-043` | P |
+| `deploy.bat` 的 install 被新命令打断（`^C`）⇒ 必须确认装机 | `PIT-044` | P |
 | 鸿蒙本机构建（命令行工具 / API 26 IME 接口 4 处差异） | `PIT-036` | P |
 | 鸿蒙自动签名后仍出 unsigned 包 / 装机 already exist | `PIT-037` | P |
+| ArkUI 保留成员名（`@State tabIndex` / `@Builder key()` 撞基类）⇒ 编译出一堆假错误 | `PIT-038` | P |
 

@@ -19,6 +19,9 @@
     ],
     "requestPermissions": [
       {
+        "name": "ohos.permission.INTERNET"
+      },
+      {
         "name": "ohos.permission.READ_PASTEBOARD",
         "reason": "$string:reason_read_pasteboard",
         "usedScene": {
@@ -31,6 +34,28 @@
       }
     ],
     "extensionAbilities": [
+      {
+        "srcEntry": "./ets/accessibility/JianJiAccessibility.ets",
+        "name": "JianJiAccessibility",
+        "label": "$string:EntryAbility_label",
+        "description": "$string:EntryAbility_desc",
+        "type": "accessibility",
+        "exported": false,
+        "metadata": [
+          {
+            "name": "ohos.accessibleability",
+            "resource": "$profile:accessibility_config"
+          }
+        ]
+      },
+      {
+        "srcEntry": "./ets/keepalive/KeepAliveAbility.ets",
+        "name": "KeepAliveAbility",
+        "label": "$string:ime_label",
+        "description": "$string:keepalive_desc",
+        "type": "workScheduler",
+        "exported": false
+      },
       {
         "srcEntry": "./ets/InputMethodExtensionAbility/InputMethodService.ets",
         "name": "InputMethodService",

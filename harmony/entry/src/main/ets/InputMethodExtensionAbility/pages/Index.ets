@@ -1,8 +1,7 @@
 import { ClipItem, ClipboardStore } from '../../model/ClipboardStore';
 import { keyboardController } from '../model/KeyboardController';
 
-/** 键盘面板高度（vp）。若真机上键盘区域不贴合，先调这个值 */
-const PANEL_HEIGHT_VP: number = 300;
+/** 键盘内容随面板高度自适应（面板尺寸由 KeyboardController 的 PANEL_HEIGHT_RATE 决定） */
 
 /**
  * 剪集输入法键盘
@@ -171,7 +170,7 @@ struct Index {
       .alignItems(VerticalAlign.Center)
     }
     .width('100%')
-    .height(PANEL_HEIGHT_VP)
+    .height('100%')
     .backgroundColor('#EDF0F4')
   }
 }

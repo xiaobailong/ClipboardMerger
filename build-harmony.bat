@@ -147,6 +147,7 @@ echo.
 echo ============================================
 echo  [2/3] hvigorw assembleHap
 echo ============================================
+node "%~dp0tools\build-info.js"
 pushd "%HARMONY_DIR%"
 if exist "%HARMONY_DIR%\hvigorw.bat" (
     call "%HARMONY_DIR%\hvigorw.bat" assembleHap

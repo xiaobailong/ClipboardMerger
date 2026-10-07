@@ -248,4 +248,52 @@
 - 反例: 照网页文档/官方样例（API 12 时代）逐字抄 —— 上面 4 处全踩；以为"没有 DevEco 就没法本机构建"；把 `READ_PASTEBOARD` 的 `ArkTS:WARN To use this API, you need to apply for the permissions` 当错误（声明过权限就是 WARN，不是失败）。
 - 自检: `build-harmony.bat` 走到 `BUILD SUCCESSFUL` 且 `build\harmony\*.hap` 存在；编译 0 ERROR（仅允许 READ_PASTEBOARD 的 WARN）。
 - 相关: `ADR-013`、`PIT-035`　首次记录: 2026-10-05
-- 追加(2026-10-07): 同一条链上的两个坑见 `PIT-037`（DevEco 自动签名后 product 缺 `"signingConfig": "default"` ⇒ 出 unsigned 包；装机报 `install already exist`）。
+- 追加(2026-10-07): 同一条链上的两个坑见 `PIT-037`（DevEco 自动签名后 product 缺 `"signingConfig": "default"` ⇒ 出 unsigned 包；装机报 `install already exist`）、`PIT-038`（ArkUI 保留成员名撞名）。
+
+## PIT-039 IME Extension 跑在**独立沙箱**：与 App 的 preferences / 文件**都不互通**（"App 设置 → 键盘生效"全废）
+- 触发条件: 把"键盘要用的配置"（切换目标、键盘高度、皮肤、日志开关）存在 App 侧 `preferences` 里，指望输入法进程能读到。
+- 现象: ①App 里设「切换目标=小艺」，键盘按「切换」却切到**百度**（键盘侧读不到 ⇒ `effectiveTarget()` 回退"列表第一个非本应用输入法"）；②App 把高度改成 0.55，键盘始终 0.30（读到自己沙箱里的默认值）；③键盘侧写回的报告/日志，App 侧**永远读不到**（日志文件里连键盘进程的行都没有）。
+- 正确做法: ①**凡是"键盘要用的设置"一律放进键盘面板内的 ⚙ 设置**（键盘进程自己读写自己的 preferences，见键盘 `ImeSettings.getTarget/setTarget/heightRate/setHeightRate`）；②跨进程通信只能走**公共事件**（`commonEventManager.publish/createSubscriberSync`，本项目 `model/EventBus.ets`）；DataShare 在本版本不可用（见 `PIT-046`）；③键盘进程要落日志必须在 `KeyboardController.onCreate` 里显式 `Logger.init(扩展上下文)`，否则只进 hilog。
+- 反例: 在 App 侧加"沙箱说明"文案就完事（功能照样不生效）；把配置同时写两处却不做同步（两边各读各的，越用越乱）。
+- 自检: 键盘内 ⚙ 里设「切换目标=小艺」→ 按「切换」应 toast「切到 小艺输入法 → 成功」；App 里改高度不应影响键盘（反之亦然），两侧的日志/历史各自独立。
+- 首次记录: 2026-10-07
+
+## PIT-040 改完输入法代码必须 `aa force-stop`：`kill -9` 杀不掉，且老进程会一直跑旧代码
+- 触发条件: 改完 IME（键盘面板/控制器）代码、装机后直接测。
+- 现象: 改了半天"没反应"—— toast 不出、报告不显示、高度不变。`ps -ef | grep <bundle>` 显示 `…:inputMethod` 进程的启动时间**早于**本次安装时间 ⇒ 它跑的是旧代码。
+- 正确做法: 装机后 `hdc shell aa force-stop com.example.clipboardmerger`（返回 `force stop process successfully.`）再测；`kill -9 <pid>` 会被系统拒绝（`Operation not permitted`）。排查顺序：先 `ps -ef | grep <bundle>` 对比进程启动时间 vs 安装时间。
+- 反例: 反复改代码/重装，却不重启输入法进程；用 `kill` 当重启手段。
+- 自检: 重装后 ps 里 `:inputMethod` 的启动时间应晚于 HAP 构建时间。
+- 首次记录: 2026-10-07
+
+## PIT-041 面板（键盘）尺寸：`resize` 必须在 `setUiContent` **之后**调；尺寸最终由系统按内容算
+- 触发条件: 想改键盘面板高度（`PanelType.SOFT_KEYBOARD`）。
+- 现象: 只在 `createPanel().then()` 里 `resize` ⇒ 高度毫无变化；`adjustPanelRect` 是另一条路（`@ohos.inputMethodEngine.d.ts` 的 `adjustPanelRect(flag, rect)`）。
+- 正确做法: ①`panel.setUiContent(...).then(() => this.resizePanel(panel))`（**设置内容之后再 resize**）；②`inputStart` / `keyboardShow` 各再 resize 一次；③页面根节点用算出来的高度 `.height(kbH)`（`kbH = px2vp(屏高 × 比例)`）——面板尺寸跟随内容；④比例从**键盘自己的** preferences 读（见 `PIT-039`）。
+- 反例: 只改一个地方就以为生效；用 `px`/`vp` 混着填（面板 `resize` 用 px，页面高度用 vp）。
+- 自检: 键盘内 ⚙ →「高度+」两次，键盘当场变高；日志有 `panel.resize ok: <w>x<h> (rate=…)`。
+- 首次记录: 2026-10-07
+
+## PIT-042 面板内的设置面板会被裁掉 ⇒ 用 `Scroll`，不要靠"临时改面板高度"
+- 触发条件: 在键盘面板里塞设置项（目标列表 + 高度 + 皮肤 + 日志）。
+- 现象: 面板高度只有屏高 0.30，第三组设置（皮肤）根本看不到；"点开设置时把面板撑到 0.6"虽能看到，但用户明确要求别动高度。
+- 正确做法: 设置区套 `Scroll() { Column() { … } }.layoutWeight(1).scrollBar(BarState.Auto)`，并让设置区与历史列表**互斥**（`if (showSettings) {} else if (空) {} else { 列表 }`）。
+- 反例: 靠调 `resize` 解决可滚动问题（治标且违反用户预期）。
+- 自检: 键盘内点 ⚙ 能滚到最下面的「键盘皮肤」并切换生效。
+- 首次记录: 2026-10-07
+
+## PIT-043 ArkTS 编译期的三个"听起来不像编译错误"的坑
+- 触发条件: ①想按条件渲染不同组件；②往 `bindMenu([...])` 里插菜单项；③给 `@kit` 模块补 import。
+- 现象: ①`'… ? Text('x').fontSize(13) : this.filledButton(…)' does not meet UI component syntax`（**三元表达式不能当组件**）；②数组里出现空对象 ⇒ `No overload matches this call` + `Property assignment expected`（插项时把上一项的 `{` 也复制了）；③`Duplicate identifier 'Notify'`（文件里已有同名 import）。
+- 正确做法: ①用 `if (cond) { … } else { … }`；②插菜单项时**先看上一行是否已有 `{`**，成对增删；③补 import 前先搜同文件是否已导入。
+- 反例: 把报错当"环境问题"重装 SDK；连续两次犯同一个 `{` 重复的错（本项目 3 次）。
+- 自检: `COMPILE RESULT:FAIL {ERROR:n}` 里 ERROR 为 0；`BUILD SUCCESSFUL` 且日志出现 `install bundle successfully`。
+- 首次记录: 2026-10-07
+
+## PIT-044 `deploy.bat` 的 install 阶段会被"新的前台命令"打断（日志出现 `^C`）⇒ 必须确认装机成功
+- 触发条件: 构建脚本跑在后台（`start /b`）时，仍在同一终端里发新命令/读取。
+- 现象: 构建日志停在 `===INSTALL===` 后跟一个 `^C`，`install bundle successfully` 没出现 —— 以为装上了，其实没装。
+- 正确做法: 每次构建后 `findstr "BUILD SUCCESSFUL" / "install bundle successfully" / "===DONE"` 三件套确认；缺 install 就手动 `hdc install -r harmony\entry\build\default\outputs\default\entry-default-signed.hap`（用 `-r` 保留数据，别 `uninstall` 否则 GitHub token 等配置全丢）。
+- 反例: 只看 `BUILD SUCCESSFUL` 就当装机完成。
+- 自检: 日志末尾有 `===DONE`，且 `inst*.txt` 里有 `install bundle successfully`。
+- 首次记录: 2026-10-07
