@@ -2,7 +2,6 @@ import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { window } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { ClipboardStore } from '../model/ClipboardStore';
-import { KeepAlive } from '../model/KeepAlive';
 import { Logger } from '../model/Logger';
 import { ThemeStore } from '../model/Theme';
 
@@ -17,7 +16,6 @@ export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     Logger.init(this.context);
     ThemeStore.init(this.context);
-    KeepAlive.init(this.context);
     ClipboardStore.init(this.context);
     Logger.d('EntryAbility.onCreate');
   }
