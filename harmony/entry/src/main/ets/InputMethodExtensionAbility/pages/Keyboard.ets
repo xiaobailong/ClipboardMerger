@@ -2,8 +2,8 @@ import { inputMethod } from '@kit.IMEKit';
 import { display } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { ClipItem, ClipboardStore } from '../../model/ClipboardStore';
-import { EventBus } from '../../model/EventBus';
-import { keyboardController } from '../model/KeyboardController';
+import { EventBus, SRC_IME } from '../../model/EventBus';
+import { KeyboardController, keyboardController } from '../model/KeyboardController';
 import { Logger } from '../../model/Logger';
 import { ImeItem, ImeSettings } from '../../model/ImeSettings';
 import { Palette, paletteOf, STATE_THEME, THEME_ANDROID, THEME_HARMONY, ThemeStore } from '../../model/Theme';
@@ -126,6 +126,25 @@ struct Keyboard {
     Logger.d(`ime pasteAll: ${parts.length} items`);
   }
 
+  /** 左滑删除单条：键盘那份删掉 + 同步给 App 进程（对齐 App 主界面的左滑删除） */
+  private removeItem(item: ClipItem): void {
+    const idx: number = this.items.indexOf(item);
+    if (idx < 0) {
+      return;
+    }
+    const it: ClipItem = this.items[idx];
+    // 通知 App 由 ClipboardStore 的变化回调统一做（KeyboardController.onCreate 里注册），这里只管本地删除
+    ClipboardStore.removeAt(idx);
+    // 勾选集合里也要去掉，否则「已选」计数虚高
+    const si: number = this.selectedTexts.indexOf(it.text);
+    if (si >= 0) {
+      this.selectedTexts.splice(si, 1);
+      this.selectedTexts = this.selectedTexts.slice();
+    }
+    this.toast('已删除 1 条（已同步 App）');
+    Logger.d(`ime swipeDelete: idx=${idx}, total=${this.items.length}`);
+  }
+
   /** 「删除」：删除选中的记录（没选中则删除最后一条） */
   private removeSelected(): void {
     if (this.selectedTexts.length === 0) {
@@ -137,8 +156,7 @@ struct Keyboard {
     for (let i = this.items.length - 1; i >= 0; i--) {
       const it: ClipItem = this.items[i];
       if (this.selectedTexts.indexOf(it.text) >= 0) {
-        // 跨进程同步：App 侧也删掉这条
-        EventBus.publish('remove', it.text, it.timestamp);
+        // 跨进程同步（App 侧也删这条）由 ClipboardStore 的变化回调统一广播
         ClipboardStore.removeAt(i);
       }
     }
@@ -240,11 +258,8 @@ struct Keyboard {
       }
       this.newCount = n;
       Logger.d(`Keyboard.refreshNew: lastPaste=${last} new=${n} total=${this.items.length}`);
-      this.publishSnapshot();
-      if (n > 0 && this.items.length > 0) {
-        // 带上最新一条正文 ⇒ App 侧据此把这条历史也补进它那份（并触发"切到剪集"提醒）
-        EventBus.publish('add', this.items[0].text, this.items[0].timestamp);
-      }
+      // 全量推一次（旧→新，App 侧合并去重）；「新增即广播」由 ClipboardStore 的变化回调负责
+      KeyboardController.publishSnapshot();
     } catch (err) {
       Logger.w('refreshNew failed');
     }
@@ -258,25 +273,7 @@ struct Keyboard {
     keyboardController.insertText(this.items[0].text);
     ImeSettings.setLastPasteTs(Date.now());
     this.newCount = 0;
-    EventBus.publish('paste', this.items[0].text, Date.now());
-  }
-
-  /**
-   * 广播全量快照（op=snapshot，text=JSON 数组，**旧→新**顺序）。
-   * 用途：公共事件只在两侧进程都活着时送达 ⇒ 一方离线期间的事件会丢，
-   * 所以两侧一启动就各广播一次全量，另一方把缺的补上（合并，不删，避免误清空）。
-   */
-  private publishSnapshot(): void {
-    try {
-      const parts: string[] = [];
-      for (let i = this.items.length - 1; i >= 0; i--) {
-        parts.push(this.items[i].text);
-      }
-      EventBus.publish('snapshot', JSON.stringify(parts), Date.now());
-      Logger.d(`Keyboard.publishSnapshot: ${parts.length} 条`);
-    } catch (err) {
-      Logger.w('publishSnapshot failed');
-    }
+    EventBus.publish('paste', this.items[0].text, Date.now(), SRC_IME);
   }
 
   /** 刷新「键盘进程日志」文件列表（键盘独立沙箱 ⇒ 列的是它自己那份） */
@@ -306,8 +303,26 @@ struct Keyboard {
     }
   }
 
+  /** 左滑出来的「删除」按钮（键盘面板的每一条历史） */
   @Builder
-  imeKey(label: string, colorIndex: number, action: () => void) {
+  swipeDeleteItem(item: ClipItem) {
+    Text('删除')
+      .fontSize(14)
+      .fontColor(Color.White)
+      .fontWeight(FontWeight.Bold)
+      .textAlign(TextAlign.Center)
+      .width(72)
+      .height('100%')
+      .backgroundColor(this.p().danger)
+      .borderRadius(8)
+      .onClick(() => {
+        this.removeItem(item);
+      })
+  }
+
+  /** 键：点 = action；可选 onLongPress（如「删除」长按 = 删历史记录） */
+  @Builder
+  imeKey(label: string, colorIndex: number, action: () => void, onLongPress?: () => void) {
     Text(label)
       .fontSize(12)
       .fontColor(this.p().imeKeyFg)
@@ -317,6 +332,11 @@ struct Keyboard {
       .borderRadius(8)
       .margin({ right: 6 })
       .onClick(action)
+      .gesture(LongPressGesture().onAction(() => {
+        if (onLongPress !== undefined) {
+          onLongPress();
+        }
+      }))
   }
 
   build() {
@@ -332,13 +352,19 @@ struct Keyboard {
           this.switchIme();
         })
         this.imeKey('删除', 3, () => {
+          // 对齐 Android btnDelete：删的是**编辑框里**的文字（有选中整段删，否则退格 1 个字符）
+          if (!keyboardController.deleteSelected()) {
+            this.toast('当前没有正在编辑的输入框');
+          }
+        }, () => {
+          // 长按保留原能力：删掉历史列表里勾选的记录
           this.removeSelected();
+          this.toast('已删除勾选的历史记录');
         })
         this.imeKey('清空', 4, () => {
+          // 跨进程同步（App 侧也清空）由 ClipboardStore 的变化回调统一广播
           ClipboardStore.clear();
           this.selectedTexts = [];
-          // 跨进程同步：App 侧也清空（否则"一边删了另一边还有"）
-          EventBus.publish('clear', '', Date.now());
         })
         this.imeKey('⚙', 3, () => {
           this.toggleSettings();
@@ -397,6 +423,8 @@ struct Keyboard {
                 keyboardController.insertText(item.text);
               })
             }
+            // 左滑删除这一条（对齐 App 主界面；键盘那份删完会同步给 App 进程）
+            .swipeAction({ end: { builder: () => { this.swipeDeleteItem(item); } } })
           }, (item: ClipItem) => `${item.timestamp}_${item.text.length}`)
         }
         .width('100%')
@@ -502,6 +530,12 @@ struct Keyboard {
                 .width('100%')
                 .padding({ left: 4, top: 1, bottom: 1 })
             }, (f: string) => f)
+
+            Text('「删除」= 删编辑框里选中的文字（没选中就退格 1 个字符）；长按「删除」= 删掉列表里勾选的历史记录；列表里**左滑某条** = 删掉这一条（会同步到 App）。')
+              .fontSize(10)
+              .fontColor(this.p().imeItemFg)
+              .width('100%')
+              .padding({ top: 4 })
 
             Text('提示：键盘进程与 App 是独立沙箱 —— 剪贴板历史、皮肤、日志各存一份。所以「切换目标 / 键盘高度 / 键盘皮肤 / 键盘日志」都只在本页设置才生效。')
               .fontSize(10)

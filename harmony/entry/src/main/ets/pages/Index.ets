@@ -1,9 +1,9 @@
 import { abilityAccessCtrl, bundleManager, common, Permissions } from '@kit.AbilityKit';
 import { BusinessError, deviceInfo } from '@kit.BasicServicesKit';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
-import { inputMethod } from '@kit.IMEKit';
+import { inputMethod, InputMethodSubtype } from '@kit.IMEKit';
 import { commonEventManager } from '@kit.BasicServicesKit';
-import { EventBus } from '../model/EventBus';
+import { EventBus, HistEvent, SRC_APP } from '../model/EventBus';
 import settings from '@ohos.settings';
 import { ClipItem, ClipboardStore } from '../model/ClipboardStore';
 import { BUILD_TIME, BUILD_TYPE, GIT_COMMIT } from '../model/BuildInfo';
@@ -49,6 +49,11 @@ struct Index {
   @State bindLabel: string = '绑定App: 未设置';
   @State imeItems: ImeItem[] = [];
   @State targetLabel: string = '不限（默认切换）';
+  /** 当前输入法显示名（状态条「当前：xxx」用） */
+  @State curImeLabel: string = '';
+  /** 系统「输入法已切换」事件回调（App 侧自己订阅；AppStorage 不跨进程，键盘进程写的 imeActive 到不了这里） */
+  private imeChangeCb: ((p: inputMethod.InputMethodProperty, s: InputMethodSubtype) => void) | undefined = undefined;
+
   @State bindName: string = '抖音';
   @State permPaste: boolean = false;
   @State permNotify: boolean = false;
@@ -56,6 +61,8 @@ struct Index {
   @State kbRate: number = 0.30;
   /** 键盘侧事件订阅者（跨进程：键盘采集到新内容 → 提醒切换输入法） */
   private histSub: commonEventManager.CommonEventSubscriber | undefined = undefined;
+  /** App 侧最近的删除/清空操作（键盘进程不在时先攒着，等它发 `hello` 时补发一次） */
+  private pendingOps: HistEvent[] = [];
   @State ghOwner: string = '';
   @State ghRepo: string = '';
   @State ghPath: string = '';
@@ -120,7 +127,22 @@ struct Index {
   private clearAll(): void {
     ClipboardStore.clear();
     this.selectedTexts = [];
+    this.publishHist('clear', '', Date.now());
     this.notice = '已清空全部记录（含系统剪贴板内容）';
+  }
+
+  /**
+   * 把 App 侧的历史操作发到**键盘进程**（App → IME 同步），并留一条待补发记录：
+   * 公共事件只在两侧进程都活着时送达 ⇒ 键盘进程当时不在，就先攒着，等它发 `hello`（刚起来）时补发。
+   */
+  private publishHist(op: string, text: string, ts: number): void {
+    const e: HistEvent = { op: op, text: text, ts: ts, src: SRC_APP };
+    if (this.pendingOps.length >= 50) {
+      this.pendingOps.shift();
+    }
+    this.pendingOps.push(e);
+    EventBus.publish(op, text, ts, SRC_APP);
+    Logger.d(`publishHist: ${op} → IME (pending=${this.pendingOps.length})`);
   }
 
   private shownItems(): ClipItem[] {
@@ -219,20 +241,6 @@ struct Index {
     }
   }
 
-  /** 弹出系统输入法选择器（对齐 Android 点状态条切换键盘） */
-  private showImePicker(): void {
-    try {
-      inputMethod.getSetting().showOptionalInputMethods().then((ok: boolean) => {
-        this.notice = ok ? '已弹出输入法列表，请选择「剪集输入法」' : '系统未弹出输入法列表';
-      }).catch((err: BusinessError) => {
-        this.notice = `弹出输入法列表失败（${err.code}）`;
-      });
-    } catch (err) {
-      const e = err as BusinessError;
-      this.notice = `调用输入法接口失败（${e.code}）`;
-    }
-  }
-
   private async requestPermission(): Promise<void> {
     try {
       const at: abilityAccessCtrl.AtManager = abilityAccessCtrl.createAtManager();
@@ -287,31 +295,45 @@ struct Index {
   aboutToAppear(): void {
     ImeSettings.init(this.host());
     this.refreshIme();
+    this.registerImeChange();
     this.refreshPerms();
     this.swReport = ImeSettings.lastSwitch();
     // 订阅键盘侧事件：键盘进程采集到新内容就广播 ⇒ 若当前输入法不是剪集，立刻提醒切换
     if (this.histSub === undefined) {
       this.histSub = EventBus.subscribe((e) => {
+        if (e.src === SRC_APP) {
+          // 自己发的事件（同进程的订阅者也会收到）⇒ 直接忽略，避免回声
+          Logger.d('histSub: skip own event');
+          return;
+        }
+        if (e.op === 'hello') {
+          // 键盘进程刚起来：把 App 攒下的删除/清空补发一次（否则键盘那份会留下已删条目）
+          if (this.pendingOps.length > 0) {
+            const n: number = this.pendingOps.length;
+            for (let i = 0; i < n; i++) {
+              const o: HistEvent = this.pendingOps[i];
+              EventBus.publish(o.op, o.text, o.ts, SRC_APP);
+            }
+            this.pendingOps = [];
+            Logger.d(`hello ← IME: 补发 ${n} 条待同步操作`);
+          }
+          return;
+        }
         if (e.op === 'add') {
-          // 键盘侧采集到的新内容 → 同步进 App 那份历史（两边保持一致）
+          // 键盘侧采集到的新内容 → 同步进 App 那份历史（只补缺的，避免重复条目）
           if (e.text !== '') {
-            ClipboardStore.addText(e.text);
+            ClipboardStore.mergeItems([{ text: e.text, timestamp: e.ts }]);
           }
         } else if (e.op === 'clear') {
           ClipboardStore.clear();
           this.notice = '已随键盘侧清空历史';
         } else if (e.op === 'snapshot') {
-          // 键盘侧全量快照（旧→新）：把 App 这份里缺的补上（只合并、不删除，避免误清空）
-          try {
-            const texts: string[] = JSON.parse(e.text) as string[];
-            for (let i = 0; i < texts.length; i++) {
-              ClipboardStore.addText(texts[i]);
-            }
-            if (texts.length > 0) {
-              this.notice = `已与键盘侧对齐（键盘侧 ${texts.length} 条）`;
-            }
-          } catch (err) {
-            Logger.w('snapshot parse failed');
+          // 键盘侧全量快照（旧→新）：只补 App 这份里缺的（并顺手去掉本地重复），不删
+          const items: ClipItem[] = ClipboardStore.parseSnapshot(e.text);
+          const added: number = ClipboardStore.mergeItems(items);
+          Logger.d(`snapshot ← IME: +${added}/${items.length}`);
+          if (added > 0) {
+            this.notice = `已从键盘侧同步 ${added} 条`;
           }
         } else if (e.op === 'remove') {
           const arr = ClipboardStore.getItems();
@@ -324,10 +346,37 @@ struct Index {
         }
       });
     }
+    // 自愈：旧版本把「快照合并」写成循环 addText，已往列表里插过重复条目 ⇒ 每次打开 App 先去重一次
+    const dropped: number = ClipboardStore.dedupeByText();
+    if (dropped > 0) {
+      this.notice = `已自动去掉 ${dropped} 条重复记录`;
+    }
     this.kbRate = ImeSettings.heightRate();
     this.loadAbout();
     GitHubStore.init(this.host());
     this.syncGhFields();
+  }
+
+  /** 页面每次显示（含从系统「输入法设置」/其它应用切回来）：重判输入法状态 + 向键盘要一次全量历史 */
+  onPageShow(): void {
+    this.refreshIme();
+    // 键盘采集到的新条目走「变化即广播」，但 App 之前可能在后台/进程刚起 ⇒ 这里主动拉一次（键盘回 snapshot）
+    EventBus.publish('pull', '', Date.now(), SRC_APP);
+    Logger.d('onPageShow: refreshIme + pull history from IME');
+  }
+
+  /** 页面销毁时退订系统输入法事件 */
+  aboutToDisappear(): void {
+    const cb = this.imeChangeCb;
+    if (cb === undefined) {
+      return;
+    }
+    try {
+      inputMethod.getSetting().off('imeChange', cb);
+      Logger.d('aboutToDisappear: off(imeChange) ok');
+    } catch (err) {
+      Logger.w('aboutToDisappear: off(imeChange) failed');
+    }
   }
 
   /**
@@ -353,6 +402,10 @@ struct Index {
   private refreshIme(): void {
     this.imeItems = ImeSettings.listAll();
     const cur: ImeItem | undefined = ImeSettings.current();
+    this.curImeLabel = cur === undefined ? '' : cur.label;
+    // 「已激活」= 剪集就是系统当前输入法：必须在 App 进程里自己问系统
+    // （键盘进程写入的 AppStorage 与本进程隔离，App 侧 @StorageLink('imeActive') 永远是默认 false）
+    this.imeActive = this.computeImeActive();
     const own: string = ImeSettings.ownRegistered() ? '剪集输入法已注册 ✓' : '剪集输入法未出现在系统列表 ✗';
     this.imeInfo = cur === undefined ? own : `${own}　当前：${cur.label}`;
     const t: ImeItem | undefined = ImeSettings.getTarget();
@@ -362,6 +415,66 @@ struct Index {
       names += `[${this.imeItems[i].label}]`;
     }
     Logger.d(`imeList: ${names}`);
+  }
+
+  /**
+   * 「剪集输入法是否已生效」：App 进程必须自己问系统 ——
+   * 键盘进程（输入法 Extension）写的 `AppStorage['imeActive']` 与本进程隔离（PIT-039），读到的永远是默认 false。
+   * ①当前输入法就是剪集 ⇒ 已激活；②`getCurrentInputMethod()` 异常时退回「默认输入法是不是剪集」。
+   */
+  private computeImeActive(): boolean {
+    try {
+      const cur: inputMethod.InputMethodProperty = inputMethod.getCurrentInputMethod();
+      const mine: boolean = cur.name === APP_BUNDLE;
+      Logger.d(`computeImeActive: current=${cur.name}, active=${mine}`);
+      return mine;
+    } catch (err) {
+      const e = err as BusinessError;
+      Logger.w(`computeImeActive: getCurrentInputMethod failed code=${e.code}`);
+    }
+    try {
+      const def: inputMethod.InputMethodProperty = inputMethod.getDefaultInputMethod();
+      Logger.d(`computeImeActive: fallback default=${def.name}`);
+      return def.name === APP_BUNDLE;
+    } catch (err2) {
+      return false;
+    }
+  }
+
+  /** 合并状态条左侧：历史条数 + 已选条数（多选时补一句操作提示） */
+  private countText(): string {
+    const sel: number = this.selectedTexts.length;
+    const more: string = sel > 1 ? '　点「合并选中」按顺序拼接' : '';
+    return `📋 共 ${this.items.length} 条　已选 ${sel} 条${more}`;
+  }
+
+  /** 合并状态条右侧：输入法状态（只读展示；未激活时带上「当前是谁」） */
+  private imeBarText(): string {
+    if (this.imeActive) {
+      return '输入法: 已激活 ✅';
+    }
+    return this.curImeLabel === ''
+      ? '输入法: 未激活 ⚠️'
+      : `输入法: 未激活 ⚠️ 当前：${this.curImeLabel}`;
+  }
+
+  /** 订阅系统「输入法变了」事件：切输入法后状态条立即跟着变，不用等用户手动刷新 */
+  private registerImeChange(): void {
+    if (this.imeChangeCb !== undefined) {
+      return;
+    }
+    const cb = (p: inputMethod.InputMethodProperty, s: InputMethodSubtype): void => {
+      Logger.d(`imeChange: now=${p.name}`);
+      this.refreshIme();
+    };
+    this.imeChangeCb = cb;
+    try {
+      inputMethod.getSetting().on('imeChange', cb);
+      Logger.d('registerImeChange: ok');
+    } catch (err) {
+      const e = err as BusinessError;
+      Logger.w(`registerImeChange failed: code=${e.code}`);
+    }
   }
 
   /** 选择「切换」按钮的目标输入法 */
@@ -463,16 +576,30 @@ struct Index {
       .onClick(action)
   }
 
+  /**
+   * 顶部合并状态条（原「共 N 条 / 已选 M 条」提示行 + 「输入法: …」状态条二合一）：
+   * 左 = 历史条数，右 = 输入法状态；**只读展示**（按需求去掉点击动作，切换输入法请走「更多 → 权限设置 → 输入法设置」）。
+   * 底色跟随输入法状态（绿=已激活 / 黄=未激活），一条就够，不再占两行。
+   */
   @Builder
-  statusBar(text: string, bg: string, fg: string, action: () => void) {
-    Text(text)
-      .fontSize(12)
-      .fontColor(fg)
-      .width('100%')
-      .textAlign(TextAlign.Center)
-      .padding(6)
-      .backgroundColor(bg)
-      .onClick(action)
+  topBar() {
+    Row() {
+      Text(this.countText())
+        .fontSize(11)
+        .fontColor(this.imeActive ? this.p().statusOnFg : this.p().statusOffFg)
+        .layoutWeight(1)
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+      Text(this.imeBarText())
+        .fontSize(11)
+        .fontColor(this.imeActive ? this.p().statusOnFg : this.p().statusOffFg)
+        .maxLines(1)
+        .margin({ left: 8 })
+    }
+    .width('100%')
+    .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+    .backgroundColor(this.imeActive ? this.p().statusOnBg : this.p().statusOffBg)
+    .alignItems(VerticalAlign.Center)
   }
 
   @Builder
@@ -488,6 +615,8 @@ struct Index {
       .borderRadius(8)
       .onClick(() => {
         ClipboardStore.removeAt(this.items.indexOf(item));
+        // 同步给键盘进程（否则键盘那份还留着这条）
+        this.publishHist('remove', item.text, item.timestamp);
         this.notice = '项目已删除';
       })
   }
@@ -559,6 +688,11 @@ struct Index {
           Text(`历史条数：${this.items.length}`)
             .fontSize(12)
             .fontColor(this.p().textPrimary)
+            .width('100%')
+            .margin({ top: 2 })
+          Text('操作：列表里左滑某条 = 删除该条（App 与键盘两侧同步删除）')
+            .fontSize(12)
+            .fontColor(this.p().textSecondary)
             .width('100%')
             .margin({ top: 2, bottom: 6 })
           Text('关于').fontSize(16).fontWeight(FontWeight.Bold).margin({ bottom: 10 })
@@ -660,6 +794,39 @@ struct Index {
               .width('100%')
               .margin({ top: 10 })
           }
+        } else if (this.dialog === 'theme') {
+          Text('皮肤设置').fontSize(16).fontWeight(FontWeight.Bold).margin({ bottom: 10 })
+          Text('⚠️ 这里只影响「剪集 App 的界面」。键盘的皮肤请在键盘内点 ⚙ →「键盘皮肤」里设（输入法进程是独立沙箱，读不到 App 侧的选择）。')
+            .fontSize(11)
+            .fontColor(this.p().danger)
+            .width('100%')
+            .margin({ bottom: 6 })
+          Row() {
+            Text(this.themeId === THEME_HARMONY ? '◉' : '○').fontSize(16).fontColor(this.p().accent)
+            Text('鸿蒙风（清淡白 · 略带透明 · 选中灰）').fontSize(14).margin({ left: 8 }).layoutWeight(1)
+          }
+          .width('100%')
+          .padding({ top: 8, bottom: 8 })
+          .onClick(() => {
+            ThemeStore.set(THEME_HARMONY);
+            this.notice = '已切换到鸿蒙风皮肤';
+          })
+          Row() {
+            Text(this.themeId === THEME_ANDROID ? '◉' : '○').fontSize(16).fontColor(this.p().accent)
+            Text('Android 原版（紫顶栏 · 深绿键盘）').fontSize(14).margin({ left: 8 }).layoutWeight(1)
+          }
+          .width('100%')
+          .padding({ top: 8, bottom: 8 })
+          .onClick(() => {
+            ThemeStore.set(THEME_ANDROID);
+            this.notice = '已切换到 Android 原版皮肤';
+          })
+          Text(`当前皮肤：${this.themeId === THEME_HARMONY ? '鸿蒙风' : 'Android 原版'}（切换后立即生效）`)
+            .fontSize(12)
+            .fontColor(this.p().textSecondary)
+            .width('100%')
+            .margin({ top: 6 })
+
         } else if (this.dialog === 'github') {
           Text('GitHub 仓库设置').fontSize(16).fontWeight(FontWeight.Bold).margin({ bottom: 10 })
           TextInput({ text: $$this.ghOwner, placeholder: '仓库所有者（owner / 用户名）' })
@@ -820,19 +987,7 @@ struct Index {
       .backgroundColor(this.p().cardBg)
       .alignItems(VerticalAlign.Center)
 
-      Text(`共 ${this.items.length} 条　已选 ${this.selectedTexts.length} 条${this.selectedTexts.length > 1 ? '（点「合并选中」按列表顺序拼接）' : ''}`)
-        .fontSize(11)
-        .fontColor(this.p().textSecondary)
-        .width('100%')
-        .padding({ left: 10, bottom: 2 })
-
-      this.statusBar(
-        this.imeActive ? '输入法: 已激活 ✅ — 后台监听中' : '输入法: 未激活 ⚠️ (点击切换键盘)',
-        this.imeActive ? this.p().statusOnBg : this.p().statusOffBg,
-        this.imeActive ? this.p().statusOnFg : this.p().statusOffFg,
-        () => {
-          this.showImePicker();
-        })
+      this.topBar()
 
       if (this.notice.length > 0) {
         Text(this.notice)

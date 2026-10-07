@@ -49,4 +49,15 @@
 | 鸿蒙本机构建（命令行工具 / API 26 IME 接口 4 处差异） | `PIT-036` | P |
 | 鸿蒙自动签名后仍出 unsigned 包 / 装机 already exist | `PIT-037` | P |
 | ArkUI 保留成员名（`@State tabIndex` / `@Builder key()` 撞基类）⇒ 编译出一堆假错误 | `PIT-038` | P |
+| 鸿蒙版：⋮→「皮肤」弹框只剩「关闭」按钮 / 状态条点出英文输入法列表 | `ISSUE-008`、`PIT-047`、`ADR-014` | I + P + D |
+| 鸿蒙 `switchInputMethod` 只能由「当前输入法」调用 ⇒ 自绘列表要带兜底 | `PIT-047` | P |
+| 鸿蒙 DataShare 只剩「数据代理」半边（无 `DataShareHelper`） | `PIT-046` | P |
+| 鸿蒙版：切了剪集输入法，App 状态条仍显示「未激活」 | `ISSUE-009` | I |
+| 脱离终端跑 hvigor：env 里写 `PATH=`（键名应为 `Path`）⇒ `spawn cmd.exe ENOENT` | `PIT-048` | P |
+| 鸿蒙版 IME「删除」键删的是历史记录，编辑框选区删不掉 | `ISSUE-010`、`PIT-049` | I + P |
+| 鸿蒙 IME Kit 无「取选中文本/删选区」⇒ `deleteForward` + `selectionChange` | `PIT-049` | P |
+| 鸿蒙版：App 里清空/左滑删除不同步到键盘（App→IME 单向缺失） | `ISSUE-011`、`PIT-050` | I + P |
+| 鸿蒙版：App 侧历史成片重复（快照合并用循环 `addText`，只挡最新一条） | `ISSUE-012` | I |
+| 公共事件是广播：自己发的事件本进程也收 ⇒ 事件必须带 `src` 过滤 | `PIT-050` | P |
+| 去掉 App 内输入法切换入口/弹框（状态条改只读） | `ADR-015`、`ISSUE-008` | D + I |
 

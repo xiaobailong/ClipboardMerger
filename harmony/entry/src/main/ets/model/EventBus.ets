@@ -16,16 +16,25 @@ import { Logger } from './Logger';
  */
 export const EV_HIST_SYNC: string = 'com.example.clipboardmerger.HIST_SYNC';
 
-/** 事件参数：{ op: 'add'|'remove'|'clear'|'snapshot', text?: string, ts?: number, list?: string } */
+/**
+ * 事件来源标记（**防回声**）：App 与输入法 Extension 是同包名的两个进程，
+ * 公共事件发出去后本进程的订阅者也会收到 ⇒ 各侧只处理对方发的事件。
+ */
+export const SRC_APP: string = 'app';
+export const SRC_IME: string = 'ime';
+
+/** 事件参数：{ op: 'add'|'remove'|'clear'|'snapshot'|'hello', text?: string, ts?: number, src?: string } */
 export interface HistEvent {
   op: string;
   text: string;
   ts: number;
+  /** 来源：SRC_APP / SRC_IME（空串 = 老版本事件，按“对方发的”处理） */
+  src: string;
 }
 
 export class EventBus {
-  /** 发布一条历史变化事件（op: add/remove/clear） */
-  static publish(op: string, text: string, ts: number): void {
+  /** 发布一条历史变化事件（op: add/remove/clear/snapshot/hello；src 声明“谁发的”） */
+  static publish(op: string, text: string, ts: number, src: string): void {
     if (ts === 0) {
       ts = Date.now();
     }
@@ -33,7 +42,8 @@ export class EventBus {
       parameters: {
         op: op,
         text: text,
-        ts: ts
+        ts: ts,
+        src: src
       }
     };
     try {
@@ -69,8 +79,9 @@ export class EventBus {
         const op: string = typeof params.op === 'string' ? params.op : '';
         const text: string = typeof params.text === 'string' ? params.text : '';
         const ts: number = typeof params.ts === 'number' ? params.ts : 0;
-        Logger.d(`EventBus recv: op=${op} ts=${ts} len=${text.length}`);
-        onEvent({ op: op, text: text, ts: ts });
+        const src: string = typeof params.src === 'string' ? params.src : '';
+        Logger.d(`EventBus recv: op=${op} ts=${ts} src=${src} len=${text.length}`);
+        onEvent({ op: op, text: text, ts: ts, src: src });
       });
       return sub;
     } catch (err) {

@@ -256,6 +256,7 @@
 - 正确做法: ①**凡是"键盘要用的设置"一律放进键盘面板内的 ⚙ 设置**（键盘进程自己读写自己的 preferences，见键盘 `ImeSettings.getTarget/setTarget/heightRate/setHeightRate`）；②跨进程通信只能走**公共事件**（`commonEventManager.publish/createSubscriberSync`，本项目 `model/EventBus.ets`）；DataShare 在本版本不可用（见 `PIT-046`）；③键盘进程要落日志必须在 `KeyboardController.onCreate` 里显式 `Logger.init(扩展上下文)`，否则只进 hilog。
 - 反例: 在 App 侧加"沙箱说明"文案就完事（功能照样不生效）；把配置同时写两处却不做同步（两边各读各的，越用越乱）。
 - 自检: 键盘内 ⚙ 里设「切换目标=小艺」→ 按「切换」应 toast「切到 小艺输入法 → 成功」；App 里改高度不应影响键盘（反之亦然），两侧的日志/历史各自独立。
+- 追加（2026-10-07，App 状态条永远「未激活」）: **AppStorage 同样不跨进程** —— `KeyboardController.ets:51/65` 的 `AppStorage.setOrCreate('imeActive', …)` 只对键盘页面生效，App（UIAbility）页的 `@StorageLink('imeActive')` 永远读到默认 `false`（= 切了剪集输入法状态条还显示未激活，`ISSUE-009`）。同理 `ThemeStore`/`ImeSettings` 两侧各一份 ⇒ 键盘每次显示都要 `reload()`。修法：App 侧自己用 `inputMethod.getCurrentInputMethod()` 判定 + `getSetting().on('imeChange')` 订阅 + `onPageShow` 兜底刷新（见 `ISSUE-009`）。
 - 首次记录: 2026-10-07
 
 ## PIT-040 改完输入法代码必须 `aa force-stop`：`kill -9` 杀不掉，且老进程会一直跑旧代码
@@ -301,6 +302,8 @@
   2. **一条命令里串联多个步骤，必然在"命令回合"边界被截断**：`b5/b6/b7` 都编成功但对应的 `install` 从没执行（`i8/i9.txt` 根本没生成）；`rel2/rel3` 的 commit/push 也是这么丢的。
   3. **构建进行中禁止改源码**：`rel4` 时我先删了 `import { notificationManager }`、随后才修 `refreshPerms()`，编译正好卡在中间 ⇒ `Cannot find name 'notificationManager'` → `BUILD FAILED`（好在脚本失败即终止，没有坏提交）。
   4. **长任务用"单条脱离进程脚本"才跑得完**：`start "" /b cmd /c "call build-harmony.bat release > tmp\rel.log 2>&1"` —— `rel5` 就是这样一次走完 6 步（commit `15ec2f4` → push `harmonyos` → tag `harmony-v1.96` → release 上传 HAP 443KB）。
+  5. **（2026-10-07 补充）脱离方式的实测结论**：`node spawn(detached:true)` 起的 hvigor **仍被掐**（日志停在 `CompileArkTS` 前后两次，进程随后消失）；改用 cmd 的 `start "" /b cmd /c node tmp\run_build.js <label>` 才稳定跑完。且务必用 `spawnSync` 包一层把退出码写进日志（`=== BG_EXIT=0 ===`），否则「被杀」和「跑完」在日志上长得一样；另：`CompileArkTS` 完成会写任务缓存，**下次构建会显示 UP-TO-DATE** —— 判断「新代码到底编进去没有」要查产物（`…/pages/Index.ts`、`modules.abc`、HAP 里有没有新符号名），别只看 `BUILD SUCCESSFUL`。
+  6. **（2026-10-07 复现）`deploy-harmony.bat` 后台跑时同样会被"下一条命令"打断**：日志停在 `force stop process successfully.` 之后，tee 写的退出码是 `-1073741510`（= `STATUS_CONTROL_C_EXIT`），后面的版本校验 / `aa start` 没执行。**脚本每步校验的设计奏效**：`install bundle successfully` 与 force-stop 已被确认 ⇒ 装机结果是好的，缺的只是收尾步骤（重跑一次或手动 `hdc shell bm dump` 即可）。做法：后台跑装机/构建时不要在同一终端发别的命令，等日志出现 `===DONE===` 再动。
 - 首次记录: 2026-10-07
 
 ## PIT-045 手机 hdc 显示 `Unauthorized` 且不弹授权框 ⇒ 换掉本机 hdc 密钥再重连（`hdc kill` 无效）
@@ -309,4 +312,50 @@
 - 正确做法: ①把本机密钥改名备份：`ren "%USERPROFILE%\.harmony\hdckey" hdckey.bak` + `ren "%USERPROFILE%\.harmony\hdckey.pub" hdckey.pub.bak`；②`hdc kill`；③等 2~4 秒再 `hdc list targets`（手机会重新授权）。实测换完密钥**无需点框即恢复**（`list targets` 只输出序列号，没有 `Unauthorized`）。
 - 反例: 反复插拔/换线；`hdc kill` 后立刻 `list targets`（状态没刷新就以为还是坏的）。
 - 自检: `hdc list targets` 输出**只有序列号**；`hdc shell echo ok` 返回 `ok`；`hdc install -r <hap>` 出现 `install bundle successfully`。
+- 首次记录: 2026-10-07
+
+## PIT-046 本机 SDK 的 DataShare 只剩「数据代理」半边：`DataShareHelper` / `DataShareExtensionAbility` 不存在 ⇒ 跨进程只能走公共事件
+- 触发条件: 想让「App（UIAbility 进程）」与「输入法 Extension 进程」共享配置/数据，照老文档写 `dataShare.createDataShareHelper()` + `DataShareExtensionAbility`。
+- 现象: 编译期直接找不到符号。本机 SDK（DevEco `sdk\default\openharmony`，API 26）里 `@ohos.data.dataShare.d.ts` **只有** `createDataProxyHandle()` / `ProxyData`（`@since 20`，`@stagemodelonly`）；`findstr /i /m /c:"DataShareHelper" "C:\Program Files\Huawei\DevEco Studio\sdk\default\openharmony\ets\api\*.d.ts"` **零命中**；`DataShareExtensionAbility` 只作为 `AbilityType` 枚举字符串出现在 `@ohos.bundle.bundleManager.d.ts`。
+- 正确做法: ①跨进程通信只用**公共事件**（`commonEventManager.publish` / `createSubscriberSync`，本项目 `model/EventBus.ets`，事件 `com.example.clipboardmerger.HIST_SYNC`）；②配置类数据**谁用谁存**：键盘要用的设置放键盘沙箱（`ImeSettings` / `ThemeStore`，各自 `preferences`），App 只读写自己那份（`PIT-039`）。
+- 反例: 照抄 `DataShareHelper` 老文档（编译不过）；把“`@ohos.data.dataShare` 模块存在”当成“能发布/订阅共享数据”。
+- 自检: 上面那条 `findstr` 应**无任何输出**（本条目即以此定论）；键盘侧设置改了 App 侧读不到属正常（不是 bug）。
+- 首次记录: 2026-10-07（补上 `PIT-039` 里长期悬空的编号引用）
+
+## PIT-047 鸿蒙 `inputMethod.switchInputMethod()` 要求「调用方就是当前输入法」⇒ App 内自绘输入法列表必须带兜底
+- 触发条件: 在普通 App（UIAbility 进程，如剪集主界面）里自绘输入法列表，点一行直接调 `inputMethod.switchInputMethod(property)`，指望切到别的输入法。
+- 现象: SDK 注释写死限制 —— `@ohos.inputMethod.d.ts:100` / `:116`「Switch input method. **The caller must be the current inputmethod.**」（返回 `Promise<boolean>`；失败可能只回 `false`，或抛 `201` / `12800005` / `12800008`）。落到剪集：剪集输入法**不是**当前输入法时（状态条显示「未激活」），App 侧点「剪集输入法」那一行大概率切不过去（调用方包名 ≠ 系统认定的当前输入法）。
+- 正确做法: ①列表数据取 `inputMethod.getSetting().getAllInputMethodsSync()` 的 `label`（**中文名**，为空才退回 `name`）——这也是“系统选择器显示英文”的解法（`ISSUE-008`）；②点行先试 `inputMethod.switchInputMethod(prop)`，`false` 或 `catch` 一律兜底 `settings.openInputMethodSettings(context)` 跳系统「输入法设置」页（中文列表，可勾选/切换），弹框顶部文案先把这条退路讲清；③`switchInputMethod` 要**原始** `InputMethodProperty`：按 `id` 回 `getAllInputMethodsSync()` 里找，别自己拼对象；④保留 `showOptionalInputMethods()`（系统选择器）作显式按钮兜底。
+- 反例: 只做 `switchInputMethod` 不做兜底（用户点了没反应且零反馈，还会觉得“优化了个假列表”）；把 `showOptionalInputMethods()` 当主入口（列英文标识，且 API 18 起 deprecated）。
+- 自检: App 里点状态条 → 弹框内是**中文名**列表；点非当前项：能切就切，切不动应自动打开系统「输入法设置」页并给出 notice（`switchToIme` 里两条失败路径）。
+- 追加（2026-10-07）: 本项目 App 侧的输入法列表入口已按用户要求**删除**（见 `ADR-015`）⇒ 本条里「自绘列表 + 失败兜底」的方案在剪集**不再适用**；`switchInputMethod` 的调用方限制本身不变，键盘进程内的「切换」键（`KeyboardController.switchIme`）仍可用。
+- 首次记录: 2026-10-07（限制来自 SDK d.ts 原文；真机“能切/切不动”的实际分支待复验）
+
+## PIT-048 「脱离终端跑 hvigor」时在 env 里写 `env.PATH = …` ⇒ es2abc 报 `spawn cmd.exe ENOENT`
+- 触发条件: 用 node `spawn(..., { env: Object.assign({}, process.env), detached: true })` 后台跑 `hvigorw.js assembleHap`（终端会掐掉长命令，见 `PIT-044` 铁律 4），并顺手把命令行工具的 node 目录塞进 PATH。
+- 现象: 类型检查阶段正常（还能报出真实的 ArkTS 类型错误），类型检查一过就失败：`ERROR: 10310021 ArkTS: INTERNAL ERROR / Error Message: Failed to initialize or launch the es2abc process. Error: spawn cmd.exe ENOENT`（编译收尾要 spawn `cmd.exe`，而 PATH 里没有 `C:\Windows\System32`）。
+- 根因: Windows 上该变量的键名是 **`Path`**；`env.PATH = nodeDir + ';' + env.PATH` 会**新建**一个 `PATH`（值 = `nodeDir;undefined`），系统目录彻底不在其中。cmd 里 `set PATH=…` 不踩这个坑，所以只在 Node 传 env 时出现。
+- 正确做法: 按**原键名**追加，再补工具链变量：
+  `const k = Object.keys(env).find(x => x.toUpperCase() === 'PATH') || 'PATH';`
+  `env[k] = NODE_DIR + ';' + env[k];`
+  `env.DEVECO_NODE_HOME = CLT + '\\tool\\node'; env.DEVECO_SDK_HOME = CLT + '\\sdk';`
+  （对齐官方 `hvigorw.bat` 的做法；`cwd` 指向 `harmony/`）
+- 反例: 直接 `env.PATH = …`；只设 `DEVECO_*` 不追加 PATH（工具链自带的 node 找不到）。
+- 自检: 日志出现 `> hvigor BUILD SUCCESSFUL`，且 `es2abc` 阶段不再报 `spawn cmd.exe ENOENT`。
+- 首次记录: 2026-10-07
+
+## PIT-049 鸿蒙 IME Kit 没有「取选中文本 / 删选区」接口 ⇒ 删除键只能 `deleteForward(length)` + `selectionChange` 记选区
+- 触发条件: 想实现「删掉编辑框里选中的文字」（Android 一行 `getSelectedText()` + `commitText("")` 就够）。
+- 现象: `@ohos.inputMethodEngine.d.ts` 里 `InputClient` / `TextInputClient` 只有 `insertText / deleteForward / deleteBackward / getForward / getBackward / getEditorAttribute / selectByRange` —— **没有** `getSelectedText`、**没有**「删除选区」、**没有** `sendKeyEvent`（`commitText` 也不存在）。`deleteForward(length)` 文档口径是「删除光标前 length 个字符」（= 退格/KEYCODE_DEL）。
+- 正确做法: ①用 `inputMethodEngine.getKeyboardDelegate().on('selectionChange', (oldBegin, oldEnd, newBegin, newEnd) => …)` 把选区范围存下来（本项目 `KeyboardController.selBegin/selEnd`）；②删除时 `client.deleteForward(selLen > 0 ? selLen : 1)` —— 有选区按选区长度发（文本框会整段删），没选区就是普通退格；③面板里给不出反馈时（没有编辑框）让方法返回 `false`，调用方 toast 提示。
+- 反例: 找 `getSelectedText()`（不存在）；只用 `deleteForward(1)` 且不记选区（选区长度未知时只能删 1 个字符，用户会觉得「没删掉选中的那段」）。
+- 自检: 编辑框里选中 3 个字 → 面板「删除」→ 3 个字全没；不选任何字 → 退 1 个字符；日志有 `selectionChange: [..] -> [..]` 与 `deleteSelected: deleteForward(n)`。
+- 首次记录: 2026-10-07（真机「选中整段」的行为待复验）
+
+## PIT-050 公共事件是广播：同包名的「App + 输入法 Extension」两进程会收到**自己发的**事件 ⇒ 必须带 `src` 过滤
+- 触发条件: 用 `commonEventManager` 做双向历史同步（App ↔ IME Extension），只按 `op` 分发、不判来源。
+- 现象: App 本地清空 → publish `clear` → App 自己的订阅者也收到 → 又执行一次 `ClipboardStore.clear()`（幂等但会刷 notice）；更糟的是 `add` 类事件会重复入列（`addText` 只对「与最新一条相同」去重 ⇒ 历史里出现重复条目），两边互相转发还可能来回广播。
+- 正确做法: ①事件参数加 `src`（`SRC_APP`/`SRC_IME`，见 `model/EventBus.ets`），**所有** publish 调用都显式传来源（本项目 7 处）；②各侧订阅回调第一件事 `if (e.src === 自己) return;`；③收到对方事件后**只改本地存储、不再广播**；④「进程不在时事件会丢」用握手补发兜：键盘进程 `onCreate` 发 `hello`，App 收到后补发它攒下的删除/清空（`pendingOps`）。
+- 反例: 只按 `op` 分发；不带来源、靠其它 `parameters` 字段猜；收到事件后原样再 publish 一次（"帮对面转发"）。
+- 自检: 一次操作在日志里只应出现一次 `publishHist: ... → IME` 和一次 `appSync: ... ← App`；不应出现 App 收到自己 clear 而反复清空。
 - 首次记录: 2026-10-07

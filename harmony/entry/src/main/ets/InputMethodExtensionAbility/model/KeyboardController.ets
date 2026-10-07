@@ -1,7 +1,8 @@
 import { inputMethod, inputMethodEngine, InputMethodExtensionContext } from '@kit.IMEKit';
 import { display } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
-import { ClipboardStore } from '../../model/ClipboardStore';
+import { ClipItem, ClipboardStore } from '../../model/ClipboardStore';
+import { EventBus, HistEvent, SRC_APP, SRC_IME } from '../../model/EventBus';
 import { Logger } from '../../model/Logger';
 import { ImeSettings } from '../../model/ImeSettings';
 import { ThemeStore } from '../../model/Theme';
@@ -30,6 +31,9 @@ export class KeyboardController {
   private client: inputMethodEngine.InputClient | undefined = undefined;
   private ctx: InputMethodExtensionContext | undefined = undefined;
   private active: boolean = false;
+  /** 当前编辑框里的选区（由 KeyboardDelegate 的 selectionChange 事件更新，「删除」按钮要用） */
+  private selBegin: number = 0;
+  private selEnd: number = 0;
 
   onCreate(context: InputMethodExtensionContext): void {
     this.ctx = context;
@@ -41,7 +45,32 @@ export class KeyboardController {
     ImeSettings.setLastSwitch('IME 进程已创建 · ' + new Date().toTimeString().substring(0, 8));
     ThemeStore.init(context);
     ImeSettings.init(context);
+    // App → 键盘 的历史同步：App 里「清空全部」「左滑删除」等操作要同步过来
+    // （只处理 src=app 的事件，避免处理自己发的而回声）
+    EventBus.subscribe((e: HistEvent) => {
+      KeyboardController.applyAppEvent(e);
+    });
+    // 键盘侧**任何**历史变化（新采集 / 删除 / 清空）都立刻广播给 App —— 这是 IME→App 的「及时」通道
+    // （以前只在面板重建时推一次，键盘开着期间新复制的内容到不了 App）
+    ClipboardStore.setChangeListener((op: string, text: string, ts: number) => {
+      EventBus.publish(op, text, ts, SRC_IME);
+      Logger.d(`storeChange → App: ${op} (len=${text.length})`);
+    });
+    // 告诉 App「键盘进程刚起来」：App 会把离线期间攒下的删除/清空补发一次
+    EventBus.publish('hello', '', Date.now(), SRC_IME);
     Logger.d('KeyboardController.onCreate: start');
+    // 跟踪编辑框选区：IME Kit 没有「取选中文本」的接口，只能订阅 selectionChange 把范围记下来（「删除」按钮要用）
+    try {
+      const delegate: inputMethodEngine.KeyboardDelegate = inputMethodEngine.getKeyboardDelegate();
+      delegate.on('selectionChange', (oldBegin: number, oldEnd: number, newBegin: number, newEnd: number) => {
+        this.selBegin = newBegin;
+        this.selEnd = newEnd;
+        Logger.d(`selectionChange: [${oldBegin},${oldEnd}] -> [${newBegin},${newEnd}]`);
+      });
+    } catch (err) {
+      const e = err as BusinessError;
+      Logger.w(`register selectionChange failed: code=${e.code}`);
+    }
 
     const ability: inputMethodEngine.InputMethodAbility = inputMethodEngine.getInputMethodAbility();
     ability.on('inputStart', (kbController: inputMethodEngine.KeyboardController,
@@ -253,6 +282,104 @@ export class KeyboardController {
     }).catch((err: BusinessError) => {
       Logger.w(`insertText failed: code=${err.code}, message=${err.message}`);
     });
+  }
+
+  /**
+   * 「删除」：删编辑框里的文字（对齐 Android 的 `btnDelete`：有选中就整段删，没选中退格 1 个字符）。
+   *
+   * IME Kit 没有「取选中文本 / 删选区」的接口，只有 `deleteForward(length)`（删光标前 length 个字符）；
+   * 选区范围靠 `KeyboardDelegate.on('selectionChange')` 记下来（selBegin/selEnd），
+   * 有选区时按选区长度发，文本框会整段删掉。
+   * @returns false = 当前没有绑定编辑框（调用方据此提示用户）
+   */
+  deleteSelected(): boolean {
+    if (this.client === undefined) {
+      Logger.w('deleteSelected: no active edit box');
+      return false;
+    }
+    const selLen: number = this.selEnd - this.selBegin;
+    const n: number = selLen > 0 ? selLen : 1;
+    this.client.deleteForward(n).then((ok: boolean) => {
+      Logger.d(`deleteSelected: deleteForward(${n}) sel=[${this.selBegin},${this.selEnd}] -> ${ok}`);
+    }).catch((err: BusinessError) => {
+      Logger.w(`deleteSelected failed: code=${err.code}, message=${err.message}`);
+    });
+    return true;
+  }
+
+  /**
+   * 应用 **App 侧**发来的历史操作（只处理 `src=SRC_APP` 的事件）。
+   *
+   * 键盘那份历史是独立沙箱（`PIT-039`），App 改不到 ⇒ 只能靠事件对齐：
+   * `clear` = 清空全部、`remove` = 删某条、`add`/`snapshot` = 补新内容（App 启动时可能推全量）。
+   * 键盘侧**不二次广播**这些事件（否则两边来回传）。
+   */
+  private static applyAppEvent(e: HistEvent): void {
+    if (e.src !== SRC_APP) {
+      return;
+    }
+    if (e.op === 'pull') {
+      // App 刚回到前台（onPageShow）：把键盘这份全量推过去，App 侧只做「缺的补上」的合并
+      KeyboardController.publishSnapshot();
+      return;
+    }
+    if (e.op === 'clear') {
+      ClipboardStore.clear();
+      Logger.d('appSync: clear ← App');
+      return;
+    }
+    if (e.op === 'remove') {
+      const arr: ClipItem[] = ClipboardStore.getItems();
+      let hit: number = -1;
+      for (let i = 0; i < arr.length; i++) {
+        if (arr[i].text === e.text && (e.ts === 0 || arr[i].timestamp === e.ts)) {
+          hit = i;
+          break;
+        }
+      }
+      if (hit < 0) {
+        for (let i = 0; i < arr.length; i++) {
+          if (arr[i].text === e.text) {
+            hit = i;
+            break;
+          }
+        }
+      }
+      if (hit >= 0) {
+        ClipboardStore.removeAt(hit);
+        Logger.d(`appSync: remove ← App (index=${hit})`);
+      } else {
+        Logger.d('appSync: remove ← App, 本地已无此条');
+      }
+      return;
+    }
+    if (e.op === 'add') {
+      if (ClipboardStore.addText(e.text)) {
+        Logger.d('appSync: add ← App');
+      }
+      return;
+    }
+    if (e.op === 'snapshot') {
+      // App 侧全量快照：只补键盘这份里缺的（并自愈本地重复），不删
+      const items: ClipItem[] = ClipboardStore.parseSnapshot(e.text);
+      const added: number = ClipboardStore.mergeItems(items);
+      Logger.d(`appSync: snapshot ← App, +${added}/${items.length}`);
+    }
+  }
+
+  /** 把键盘这份历史全量广播给 App（旧→新，带时间戳；App 侧合并去重、只加不删） */
+  static publishSnapshot(): void {
+    try {
+      const items: ClipItem[] = ClipboardStore.getItems();
+      const payload: ClipItem[] = [];
+      for (let i = items.length - 1; i >= 0; i--) {
+        payload.push({ text: items[i].text, timestamp: items[i].timestamp });
+      }
+      EventBus.publish('snapshot', JSON.stringify(payload), Date.now(), SRC_IME);
+      Logger.d(`publishSnapshot → App: ${payload.length} 条`);
+    } catch (err) {
+      Logger.w('publishSnapshot failed');
+    }
   }
 
   /** 退格（IME Kit 里 KEYCODE_DEL 对应 deleteForward） */

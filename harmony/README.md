@@ -62,6 +62,21 @@ harmony/
 - 脚本会自己找 DevEco（`C:\Program Files\Huawei\DevEco Studio` → `D:` / `E:` / `%LOCALAPPDATA%`）；装在别处就先 `set "DEVECO_HOME=<你的目录>"` 再跑
 - Release 标签形如 `harmony-v1.89`，与 Android 的 `v1.88` 区分（同一仓库共享标签命名空间）
 
+## 装机脚本 `deploy-harmony.bat`（在仓库根）
+
+| 命令 | 作用 |
+| --- | --- |
+| `deploy-harmony.bat` | 装**最新构建**的签名 HAP（`harmony\entry\build\default\outputs\default\entry-default-signed.hap`）→ `aa force-stop`（新代码生效）→ `bm dump` 校验设备版本号 = `app.json5` → 尝试拉起 App（**不动 git**） |
+| `deploy-harmony.bat list` | 只列设备（在不在、是否 Unauthorized） |
+| `deploy-harmony.bat <x.hap>` | 装指定的 HAP（同样 force-stop + 校验 + 拉起） |
+
+- 只走调试通道 `hdc`：脚本自己找 `hdc.exe`（`HOS_CLT` 默认 `D:\Tools\DevTools\hmos\command-line-tools` → `DEVECO_HOME` → 常见 DevEco 安装目录 → `PATH`）
+- 关键行为（都是踩过的坑，别改）：`install -r` 保留数据（**不要** `uninstall`，GitHub token / 历史 / 设置会全丢）；装机后**必须** `force-stop`，否则输入法进程继续跑旧代码（`PIT-040`）；必须看到 `install bundle successfully` 才算装上（`PIT-044`）
+- 版本校验：读 `tools\harmony-version.js` 的 versionName，与 `bm dump -n com.example.clipboardmerger` 的版本比对；不一致会提示“可能装的是旧包”（`PIT-029`）
+- 锁屏时 `aa start` 会被系统拒（`10106102 The device screen is locked`，开发者模式不允许自动解锁）——脚本会提示“解锁后手动打开一次”，不影响装机结果
+- 设备未授权（`Unauthorized`，手机不弹框）时脚本直接给出换密钥的命令（`PIT-045`）
+- 日志：`build\logs\deploy_<ts>.log`（复用 `tools\tee-log.ps1`）；诊断输出 `tmp\deploy_*.txt`（可删）
+
 ## 环境部署：只有一件事必须你来做
 
 命令行构建**绕不开 DevEco Studio**（hvigor / node / ohpm / HarmonyOS SDK 都在它的安装目录里；公共 npm 与镜像上都**没有** `@ohos/hvigor`，已实测全 404）。而且**真机安装必须是华为签名的 HAP**：
