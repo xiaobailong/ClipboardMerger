@@ -9,9 +9,7 @@ import { ClipItem, ClipboardStore } from '../model/ClipboardStore';
 import { BUILD_TIME, BUILD_TYPE, GIT_COMMIT } from '../model/BuildInfo';
 import { GhConfig, GitHubStore } from '../model/GitHub';
 import { ImeItem, ImeSettings } from '../model/ImeSettings';
-import { KeepAlive } from '../model/KeepAlive';
 import { Logger } from '../model/Logger';
-import { Notify } from '../model/Notify';
 import {
   Palette,
   paletteOf,
@@ -51,8 +49,6 @@ struct Index {
   @State bindLabel: string = '绑定App: 未设置';
   @State imeItems: ImeItem[] = [];
   @State targetLabel: string = '不限（默认切换）';
-  @State keepAliveOn: boolean = KeepAlive.isEnabled();
-  @State keepAliveTick: string = '';
   @State bindName: string = '抖音';
   @State permPaste: boolean = false;
   @State permNotify: boolean = false;
@@ -223,20 +219,6 @@ struct Index {
     }
   }
 
-  /** 申请通知授权（鸿蒙：首次会弹系统授权框） */
-  private async enableNotify(): Promise<void> {
-    const ok: boolean = await Notify.enable(this.host());
-    this.refreshPerms();
-    this.notice = ok ? '已获得通知授权' : '未获得通知授权（可到系统设置里开启）';
-  }
-
-  /** 发一条测试提醒（验证通知通道） */
-  private async testNotify(): Promise<void> {
-    await Notify.enable(this.host());
-    await Notify.remind('剪集', '这是提醒测试：进入绑定的 App 时应该弹这条（鸿蒙替代 Android 悬浮气泡）');
-    this.notice = '已发送测试提醒 —— 看通知栏 / 横幅';
-  }
-
   /** 弹出系统输入法选择器（对齐 Android 点状态条切换键盘） */
   private showImePicker(): void {
     try {
@@ -302,23 +284,6 @@ struct Index {
    *  ② WorkScheduler 定时兜底（见 KeepAliveAbility.tick）。
    * 判定条件：`inputMethod.getCurrentInputMethod()` 不是剪集 ⇒ 发通知提醒去切换（点通知进本页）。
    */
-  private async maybeRemindSwitchIme(src: string): Promise<void> {
-    try {
-      const cur = inputMethod.getCurrentInputMethod();
-      const mine: boolean = cur.name === APP_BUNDLE;
-      Logger.d(`maybeRemindSwitchIme(${src}): current=${cur.name}, mine=${mine}`);
-      if (mine) {
-        return;
-      }
-      await Notify.enable(this.host());
-      await Notify.remind('剪集',
-        '当前输入法不是「剪集」—— 点这里打开输入法设置，切到剪集就能一键粘贴刚复制的内容');
-      this.notice = '当前不是剪集输入法，已提醒你去切换';
-    } catch (err) {
-      Logger.w('maybeRemindSwitchIme failed');
-    }
-  }
-
   aboutToAppear(): void {
     ImeSettings.init(this.host());
     this.refreshIme();
@@ -695,123 +660,6 @@ struct Index {
               .width('100%')
               .margin({ top: 10 })
           }
-        } else if (this.dialog === 'keepalive') {
-          Text('后台保活 / 提醒').fontSize(16).fontWeight(FontWeight.Bold).margin({ bottom: 10 })
-          Text('提醒（原「提醒设置」已并入这里）')
-            .fontSize(13)
-            .fontColor(this.p().textPrimary)
-            .width('100%')
-            .margin({ top: 4 })
-          Text('鸿蒙普通应用拿不到悬浮窗权限（SYSTEM_FLOAT_WINDOW），横幅是否显示由系统策略决定 ⇒ 用『高优先级通知』提醒（合规路径，可靠性不如 Android 的自绘气泡）。')
-            .fontSize(11)
-            .fontColor(this.p().textSecondary)
-            .width('100%')
-            .margin({ top: 4 })
-          Row() {
-            if (this.permNotify) {
-              Text('通知已授权 ✓').fontSize(13).fontColor(this.p().statusOnFg)
-            } else {
-              this.textButton('申请通知授权', this.p().accent, () => {
-                this.enableNotify();
-              })
-            }
-            this.textButton('发一条测试提醒', this.p().statusOnFg, () => {
-              this.testNotify();
-            })
-          }
-          .width('100%')
-          .margin({ top: 8, bottom: 6 })
-          Row() {
-            this.filledButton('打开应用详情页（自启动/电池）', this.p().accent, () => {
-              this.openAppDetail();
-            })
-          }
-          .width('100%')
-          .margin({ bottom: 6 })
-          Text('① 系统侧（入口名各版本不同，照着找最近的）：设置 → 应用（或"应用和服务"）→ 应用管理 → 剪集 → 打开「应用启动管理 / 自启动 / 后台活动」，把「自动管理」关掉、手动允许自启动与后台活动；再把「最近任务」里的剪集卡片下拉加锁。')
-            .fontSize(12)
-            .fontColor(this.p().textPrimary)
-            .width('100%')
-            .margin({ top: 6 })
-          Text('（如果在设置里找不到「应用启动管理」，就走「应用信息」页：设置 → 应用 → 应用管理 → 剪集 → 更多/详情）')
-            .fontSize(11)
-            .fontColor(this.p().textSecondary)
-            .width('100%')
-            .margin({ top: 4 })
-          Text('② App 侧（已内置）：剪集输入法被系统拉起时顺手补起剪贴板监听 —— 鸿蒙上最可靠的"复活点"（点任何输入框都会拉起输入法）。')
-            .fontSize(12)
-            .fontColor(this.p().textPrimary)
-            .width('100%')
-            .margin({ top: 6 })
-          Text('③ 定时补活：鸿蒙有 WorkScheduler（延迟任务）可替代 Android 的自拉起闹钟，但要额外申请后台任务权限；"常用前台服务"对应鸿蒙的「长时任务」（必须挂通知）。开关就在下面（开启后约 20 分钟兜底一次，避免被系统判定滥用）。')
-            .fontSize(12)
-            .fontColor(this.p().textPrimary)
-            .width('100%')
-            .margin({ top: 6 })
-          Text('④ 被系统「强行停止」后，鸿蒙同样不允许任何应用自拉起，只能手动点开一次剪集。')
-            .fontSize(12)
-            .fontColor(this.p().textSecondary)
-            .width('100%')
-            .margin({ top: 6 })
-          Row() {
-            Column() {
-              Text('定时补活（延迟任务）').fontSize(14).fontColor(this.p().textPrimary)
-              Text('鸿蒙 WorkScheduler：约 20 分钟一次，到点兜底采集剪贴板 + 写心跳日志')
-                .fontSize(11)
-                .fontColor(this.p().textSecondary)
-            }
-            .layoutWeight(1)
-            .alignItems(HorizontalAlign.Start)
-
-            Toggle({ type: ToggleType.Switch, isOn: this.keepAliveOn })
-              .onChange((isOn: boolean) => {
-                this.keepAliveOn = isOn;
-                KeepAlive.setEnabled(this.host(), isOn);
-                this.keepAliveTick = KeepAlive.lastTickTime();
-                this.notice = isOn ? '定时补活已开启（首次触发可能要等一会）' : '定时补活已关闭';
-              })
-          }
-          .width('100%')
-          .margin({ top: 10 })
-          if (this.keepAliveTick !== '') {
-            Text(`最近一次心跳：${this.keepAliveTick}`)
-              .fontSize(11)
-              .fontColor(this.p().textSecondary)
-              .width('100%')
-              .margin({ top: 6 })
-          }
-        } else if (this.dialog === 'theme') {
-          Text('皮肤设置').fontSize(16).fontWeight(FontWeight.Bold).margin({ bottom: 10 })
-          Text('⚠️ 这里只影响「剪集 App 的界面」。键盘的皮肤请在键盘内点 ⚙ →「键盘皮肤」里设（输入法进程是独立沙箱，读不到 App 侧的选择）。')
-            .fontSize(11)
-            .fontColor(this.p().danger)
-            .width('100%')
-            .margin({ bottom: 6 })
-          Row() {
-            Text(this.themeId === THEME_HARMONY ? '◉' : '○').fontSize(16).fontColor(this.p().accent)
-            Text('鸿蒙风（清淡白 · 略带透明 · 选中灰）').fontSize(14).margin({ left: 8 }).layoutWeight(1)
-          }
-          .width('100%')
-          .padding({ top: 8, bottom: 8 })
-          .onClick(() => {
-            ThemeStore.set(THEME_HARMONY);
-            this.notice = '已切换到鸿蒙风皮肤';
-          })
-          Row() {
-            Text(this.themeId === THEME_ANDROID ? '◉' : '○').fontSize(16).fontColor(this.p().accent)
-            Text('Android 原版（紫顶栏 · 深绿键盘）').fontSize(14).margin({ left: 8 }).layoutWeight(1)
-          }
-          .width('100%')
-          .padding({ top: 8, bottom: 8 })
-          .onClick(() => {
-            ThemeStore.set(THEME_ANDROID);
-            this.notice = '已切换到 Android 原版皮肤';
-          })
-          Text('提示：键盘面板由输入法进程单独渲染，切换皮肤后下次弹出键盘即生效（已做自动重读）。')
-            .fontSize(12)
-            .fontColor(this.p().textSecondary)
-            .width('100%')
-            .margin({ top: 6 })
         } else if (this.dialog === 'github') {
           Text('GitHub 仓库设置').fontSize(16).fontWeight(FontWeight.Bold).margin({ bottom: 10 })
           TextInput({ text: $$this.ghOwner, placeholder: '仓库所有者（owner / 用户名）' })
