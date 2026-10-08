@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 工具栏“更多”下拉菜单：日志设置 / 关于 -->
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/action_log_settings"
+        android:title="@string/settings_log" />
+    <item
+        android:id="@+id/action_ime_settings"
+        android:title="@string/settings_ime" />
+    <item
+        android:id="@+id/action_bind_app"
+        android:title="@string/settings_bind_app" />
+    <item
+        android:id="@+id/action_overlay_permission"
+        android:title="@string/settings_overlay_permission" />
+    <item
+        android:id="@+id/action_reminder_settings"
+        android:title="@string/settings_reminder" />
+    <item
+        android:id="@+id/action_keep_alive"
+        android:title="@string/settings_keep_alive" />
+    <item
+        android:id="@+id/action_about"
+        android:title="@string/settings_about" />
+</menu>

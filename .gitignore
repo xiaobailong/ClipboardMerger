@@ -14,10 +14,9 @@ captures/
 .cxx/
 *.hprof
 
-# Gradle
-local.properties
-gradle/wrapper/gradle-wrapper.jar
-gradle/wrapper/gradle-wrapper.properties
+# Gradle (Android)
+android/local.properties
+android/gradle/wrapper/gradle-wrapper.jar
 
 # Keystore files
 *.jks

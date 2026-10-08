@@ -49,33 +49,33 @@ harmony/
 | 通知 + 悬浮气泡提醒（见 `PIT-031/032/033`） | 未移植 | 那套是绕开 Android 通知系统的手段，鸿蒙机制不同，按需再定 |
 | `version.properties` 管版本 | `AppScope/app.json5` 的 versionName / versionCode | 两套构建各自管版本（发鸿蒙包时手工对齐） |
 
-## 构建脚本 `build-harmony.bat`（在仓库根）
+## 构建脚本 `build-harmony.bat`（在 scripts/ 目录）
 
 | 命令 | 作用 |
 | --- | --- |
-| `build-harmony.bat` | 只构建：`hvigorw assembleHap` → 产物收成 `build\harmony\JianJi-HarmonyOS-v<版本>-<build>.hap`（**不动 git**） |
-| `build-harmony.bat release` | 递增鸿蒙版本号 → 构建 → `git commit/push` → tag `harmony-v<版本>` → `gh release create` 上传 HAP |
-| `build-harmony.bat clean` | 清理 `harmony\.hvigor`、`harmony\entry\build`、`build\harmony`、根目录 `*.hap` |
+| `scripts\build-harmony.bat` | 只构建：`hvigorw assembleHap` → 产物收成 `build\harmony\JianJi-HarmonyOS-v<版本>-<build>.hap`（**不动 git**） |
+| `scripts\build-harmony.bat release` | 递增鸿蒙版本号 → 构建 → `git commit/push` → tag `harmony-v<版本>` → `gh release create` 上传 HAP |
+| `scripts\build-harmony.bat clean` | 清理 `harmony\.hvigor`、`harmony\entry\build`、`build\harmony`、根目录 `*.hap` |
 
-- 日志：`build\logs\harmony_<ts>.log`（复用 `tools\tee-log.ps1`，逐行先落盘再回显，同 `build.bat`）
-- 版本号真源：`harmony\AppScope\app.json5`（工具 `tools\harmony-version.js`）；与 Android 的 `version.properties` **各自独立**
+- 日志：`build\logs\harmony_<ts>.log`（复用 `scripts\tools\tee-log.ps1`，逐行先落盘再回显，同 `scripts\build.bat`）
+- 版本号真源：`harmony\AppScope\app.json5`（工具 `scripts\tools\harmony-version.js`）；与 Android 的 `version.properties` **各自独立**
 - 脚本会自己找 DevEco（`C:\Program Files\Huawei\DevEco Studio` → `D:` / `E:` / `%LOCALAPPDATA%`）；装在别处就先 `set "DEVECO_HOME=<你的目录>"` 再跑
 - Release 标签形如 `harmony-v1.89`，与 Android 的 `v1.88` 区分（同一仓库共享标签命名空间）
 
-## 装机脚本 `deploy-harmony.bat`（在仓库根）
+## 装机脚本 `deploy-harmony.bat`（在 scripts/ 目录）
 
 | 命令 | 作用 |
 | --- | --- |
-| `deploy-harmony.bat` | 装**最新构建**的签名 HAP（`harmony\entry\build\default\outputs\default\entry-default-signed.hap`）→ `aa force-stop`（新代码生效）→ `bm dump` 校验设备版本号 = `app.json5` → 尝试拉起 App（**不动 git**） |
-| `deploy-harmony.bat list` | 只列设备（在不在、是否 Unauthorized） |
-| `deploy-harmony.bat <x.hap>` | 装指定的 HAP（同样 force-stop + 校验 + 拉起） |
+| `scripts\deploy-harmony.bat` | 装**最新构建**的签名 HAP（`harmony\entry\build\default\outputs\default\entry-default-signed.hap`）→ `aa force-stop`（新代码生效）→ `bm dump` 校验设备版本号 = `app.json5` → 尝试拉起 App（**不动 git**） |
+| `scripts\deploy-harmony.bat list` | 只列设备（在不在、是否 Unauthorized） |
+| `scripts\deploy-harmony.bat <x.hap>` | 装指定的 HAP（同样 force-stop + 校验 + 拉起） |
 
 - 只走调试通道 `hdc`：脚本自己找 `hdc.exe`（`HOS_CLT` 默认 `D:\Tools\DevTools\hmos\command-line-tools` → `DEVECO_HOME` → 常见 DevEco 安装目录 → `PATH`）
 - 关键行为（都是踩过的坑，别改）：`install -r` 保留数据（**不要** `uninstall`，GitHub token / 历史 / 设置会全丢）；装机后**必须** `force-stop`，否则输入法进程继续跑旧代码（`PIT-040`）；必须看到 `install bundle successfully` 才算装上（`PIT-044`）
-- 版本校验：读 `tools\harmony-version.js` 的 versionName，与 `bm dump -n com.example.clipboardmerger` 的版本比对；不一致会提示“可能装的是旧包”（`PIT-029`）
+- 版本校验：读 `scripts\tools\harmony-version.js` 的 versionName，与 `bm dump -n com.example.clipboardmerger` 的版本比对；不一致会提示"可能装的是旧包"（`PIT-029`）
 - 锁屏时 `aa start` 会被系统拒（`10106102 The device screen is locked`，开发者模式不允许自动解锁）——脚本会提示“解锁后手动打开一次”，不影响装机结果
 - 设备未授权（`Unauthorized`，手机不弹框）时脚本直接给出换密钥的命令（`PIT-045`）
-- 日志：`build\logs\deploy_<ts>.log`（复用 `tools\tee-log.ps1`）；诊断输出 `tmp\deploy_*.txt`（可删）
+- 日志：`build\logs\deploy_<ts>.log`（复用 `scripts\tools\tee-log.ps1`）；诊断输出 `tmp\deploy_*.txt`（可删）
 
 ## 环境部署：只有一件事必须你来做
 
@@ -84,8 +84,8 @@ harmony/
 1. 下载安装 **DevEco Studio 5.0+**（约 3~6 GB，下载需华为账号）：<https://developer.huawei.com/consumer/cn/download/deveco-studio>
 2. 打开本目录 `harmony/`（**不要开仓库根**）→ `File → Project Structure → Signing Configs` → 勾选 **Automatically generate signature**（需账号实名。这一步会把签名材料写进 `harmony/build-profile.json5`，之后命令行构建同样能出**已签名** HAP）
 3. 确认 SDK 已下载：`File → Settings → SDK`（API 12 及以上）
-4. 回仓库根跑 `build-harmony.bat`；要发布就跑 `build-harmony.bat release`
-5. 勾完自动签名**再跑一次** `build-harmony.bat`：签名材料（`harmony\signature\` 下的 `.p12/.cer/.p7b`，已 gitignore）由 hvigor 自动使用，产物从 `entry-default-unsigned.hap` 变成 `entry-default-signed.hap`，收集成 `build\harmony\JianJi-HarmonyOS-<版本>.hap` —— 只有这个包才能 `hdc install` 到真机
+4. 回仓库根跑 `scripts\build-harmony.bat`；要发布就跑 `scripts\build-harmony.bat release`
+5. 勾完自动签名**再跑一次** `scripts\build-harmony.bat`：签名材料（`harmony\signature\` 下的 `.p12/.cer/.p7b`，已 gitignore）由 hvigor 自动使用，产物从 `entry-default-unsigned.hap` 变成 `entry-default-signed.hap`，收集成 `build\harmony\JianJi-HarmonyOS-<版本>.hap` —— 只有这个包才能 `hdc install` 到真机
    - 说明：日常构建用的是已装好的**命令行工具**（`D:\Tools\DevTools\hmos\command-line-tools`），DevEco 只用来做「自动签名」这一步；DevEco 装在非默认目录时告诉脚本 `set "DEVECO_HOME=<DevEco 目录>"` 也不影响（签名配置在工程里，跟用哪套 hvigor 无关）
 
 ## 首次 DevEco 自动签名后：务必检查这一行（实测踩到）
