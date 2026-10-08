@@ -110,7 +110,7 @@ ClipboardMerger/
 ## 常用操作
 - **编译检查**: `gradle assembleDebug`（不推送，不自增版本）
 - **完整构建发布**: `scripts\build.bat`（含 git 提交/推送/打 tag/GitHub Release）
-- **清理构建缓存**: `scripts\build.bat clean` 或手动删除 `build/` 目录和 `app/build/` 目录
+- **清理构建缓存**: `scripts\build.bat clean` 或 `scripts\clean.bat`，或手动删除 `android/build/` 目录和 `android/app/build/` 目录
 - **安装 SDK 组件**: `scripts\build.bat setup`
 
 ## 项目记忆
