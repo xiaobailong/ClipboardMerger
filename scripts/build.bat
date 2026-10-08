@@ -97,16 +97,18 @@ echo ============================================
 echo  正在清理构建产物...
 echo ============================================
 echo.
+pushd android
 call "D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" --stop --console=plain 2>nul
 timeout /t 2 /nobreak > nul
 call "D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" clean --console=plain
+popd
 if %ERRORLEVEL% neq 0 (
     echo [警告] gradle clean 失败，尝试手动清理...
-    rmdir /s /q "build" 2>nul
+    rmdir /s /q "android\build" 2>nul
 )
-rmdir /s /q ".gradle" 2>nul
-if exist "*.apk" del /q "*.apk" 2>nul
-if exist "*.aab" del /q "*.aab" 2>nul
+rmdir /s /q "android\.gradle" 2>nul
+if exist "android\*.apk" del /q "android\*.apk" 2>nul
+if exist "android\*.aab" del /q "android\*.aab" 2>nul
 REM Cline 临时目录：整目录删除（约定见 .clinerules/tmp-files.md）
 rmdir /s /q "tmp" 2>nul
 echo.
@@ -125,7 +127,9 @@ echo ============================================
 echo.
 
 echo [1/5] 递增版本号...
+pushd android
 call "D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" incrementVersion --console=plain
+popd
 if %ERRORLEVEL% neq 0 (
     echo [错误] 版本号递增失败！Exit code=%ERRORLEVEL%
     call :countdown
@@ -134,18 +138,22 @@ if %ERRORLEVEL% neq 0 (
 echo       完成。
 
 echo [2/5] 清理旧产物...
+pushd android
 call "D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" --stop --console=plain 2>nul
 timeout /t 2 /nobreak > nul
 call "D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" clean --console=plain
+popd
 if %ERRORLEVEL% neq 0 (
     echo [警告] gradle clean 失败，尝试手动清理...
-    rmdir /s /q "build" 2>nul
+    rmdir /s /q "android\build" 2>nul
 )
 echo       完成。
 
 echo [3/5] 编译 APK（请耐心等待）...
+pushd android
 call "D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" assembleDebug --console=plain
 set BUILD_EXIT=%ERRORLEVEL%
+popd
 
 echo.
 if %BUILD_EXIT% neq 0 (
@@ -161,7 +169,7 @@ echo  构建成功！
 echo ============================================
 if exist "*.apk" del /q "*.apk" 2>nul
 set "APK_PATH="
-for /f "delims=" %%f in ('dir /s /b build\outputs\apk\debug\*.apk 2^>nul') do (
+for /f "delims=" %%f in ('dir /s /b android\build\outputs\apk\debug\*.apk 2^>nul') do (
     copy /y "%%f" "." > nul
     set "APK_PATH=%%f"
     echo  APK: %%~nxf  ^(%%~zf bytes^)
@@ -185,13 +193,13 @@ if errorlevel 1 (
 )
 
 echo       读取版本信息...
-for /f "tokens=2 delims==" %%i in ('findstr "versionName=" version.properties') do set "V_NAME=%%i"
-for /f "tokens=2 delims==" %%i in ('findstr "versionCode=" version.properties') do set "V_CODE=%%i"
+for /f "tokens=2 delims==" %%i in ('findstr "versionName=" android\version.properties') do set "V_NAME=%%i"
+for /f "tokens=2 delims==" %%i in ('findstr "versionCode=" android\version.properties') do set "V_CODE=%%i"
 set "TAG=v%V_NAME%"
 echo       版本: %TAG% (code=%V_CODE%)
 
 echo       提交版本变更...
-call git add version.properties
+call git add android\version.properties
 call git diff --cached --quiet
 if errorlevel 1 (
     call git commit -m "release: %TAG% (build %V_CODE%)"
@@ -293,7 +301,9 @@ if %ERRORLEVEL% neq 0 (
 echo       工作区干净。
 
 echo [3/6] 递增版本号...
+pushd android
 call "D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" incrementVersion --no-daemon --console=plain
+popd
 if %ERRORLEVEL% neq 0 (
     echo [错误] 版本号递增失败！
     pause
@@ -302,14 +312,16 @@ if %ERRORLEVEL% neq 0 (
 echo       完成。
 
 echo [4/6] 读取版本信息...
-for /f "tokens=2 delims==" %%i in ('findstr "versionName=" version.properties') do set "V_NAME=%%i"
-for /f "tokens=2 delims==" %%i in ('findstr "versionCode=" version.properties') do set "V_CODE=%%i"
+for /f "tokens=2 delims==" %%i in ('findstr "versionName=" android\version.properties') do set "V_NAME=%%i"
+for /f "tokens=2 delims==" %%i in ('findstr "versionCode=" android\version.properties') do set "V_CODE=%%i"
 set "TAG=v%V_NAME%"
 echo       版本: %TAG% (code=%V_CODE%)
 
 echo [5/6] 编译APK...
+pushd android
 call "D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" clean assembleDebug --no-daemon --console=plain
 set BUILD_EXIT=%ERRORLEVEL%
+popd
 if %BUILD_EXIT% neq 0 (
     echo ============================================
     echo  构建失败！Exit code=%BUILD_EXIT%
@@ -320,7 +332,7 @@ if %BUILD_EXIT% neq 0 (
 echo       构建成功。
 
 set "APK_PATH="
-for /f "delims=" %%f in ('dir /s /b build\outputs\apk\debug\*.apk 2^>nul') do set "APK_PATH=%%f"
+for /f "delims=" %%f in ('dir /s /b android\build\outputs\apk\debug\*.apk 2^>nul') do set "APK_PATH=%%f"
 if "%APK_PATH%"=="" (
     echo [错误] 找不到APK文件！
     pause
@@ -331,7 +343,7 @@ echo       APK: %APK_PATH%
 echo [6/6] Git提交并推送 + GitHub Release...
 echo.
 echo       提交版本变更...
-call git add version.properties
+call git add android\version.properties
 call git diff --cached --quiet
 if errorlevel 1 (
     call git commit -m "release: %TAG% (build %V_CODE%)"

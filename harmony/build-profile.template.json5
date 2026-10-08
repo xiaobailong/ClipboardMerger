@@ -1,0 +1,50 @@
+// 模板：新机器克隆本仓库后，把它复制成 build-profile.json5 再打开 DevEco。
+// 为什么这么做：DevEco「自动签名」会把签名材料路径 + 加密后的口令写回 build-profile.json5，
+// 那是机器本地凭据，不能入库 ⇒ 真正的 build-profile.json5 已被 harmony/.gitignore 忽略。
+//
+// 用法：
+//   copy harmony\build-profile.template.json5 harmony\build-profile.json5
+//   DevEco 打开 harmony/ → Project Structure → Signing Configs → 勾自动签名
+//   若构建仍提示 "No signingConfig found for product default"，
+//   在下面 products 的 "default" 条目里补一行： "signingConfig": "default",
+{
+  "app": {
+    "signingConfigs": [],
+    "products": [
+      {
+        "name": "default",
+        "compatibleSdkVersion": "26.0.0",
+        "targetSdkVersion": "26.0.0",
+        "runtimeOS": "HarmonyOS",
+        "buildOption": {
+          "strictMode": {
+            "caseSensitiveCheck": true,
+            "useNormalizedOHMUrl": true
+          }
+        }
+      }
+    ],
+    "buildModeSet": [
+      {
+        "name": "debug"
+      },
+      {
+        "name": "release"
+      }
+    ]
+  },
+  "modules": [
+    {
+      "name": "entry",
+      "srcPath": "./entry",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        }
+      ]
+    }
+  ]
+}

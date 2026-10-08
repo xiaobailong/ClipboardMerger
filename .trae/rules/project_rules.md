@@ -14,46 +14,58 @@ Android 剪贴板合并工具「剪集」，支持输入法（IME）内嵌剪贴
 ## 目录结构
 ```
 ClipboardMerger/
-├── app/
-│   ├── src/main/java/com/example/clipboardmerger/
-│   │   ├── MainActivity.kt                  # 主界面，剪贴板管理
-│   │   ├── ClipboardInputMethodService.kt   # IME 输入法服务，内嵌剪贴板面板
-│   │   ├── ClipboardService.kt              # 后台剪贴板监听服务
-│   │   ├── ClipboardViewModel.kt            # ViewModel，数据绑定
-│   │   ├── ClipboardRepository.kt           # 数据仓库层
-│   │   ├── ClipboardItem.kt                 # 剪贴项数据模型
-│   │   ├── ClipboardAdapter.kt              # 主界面 RecyclerView 适配器
-│   │   ├── ImeClipboardAdapter.kt           # IME 面板 RecyclerView 适配器
-│   │   ├── GitHubHelper.kt                  # GitHub Release 检查更新
-│   │   └── Logger.kt                        # 日志工具类（文件日志 + 自动清理）
-│   └── src/main/res/                        # 布局、字符串资源
-├── tools/
-│   └── tee-log.ps1                          # 日志 tee 包装器
-├── build.bat                                # 一键构建脚本（构建+递增版本+GitHub Release）
-├── gh-release.bat                           # 单独补发 GitHub Release
-├── version.properties                       # 版本号真源
-└── memory-bank/                             # 知识库
+├── android/
+│   ├── app/
+│   │   ├── src/main/java/com/example/clipboardmerger/
+│   │   │   ├── MainActivity.kt                  # 主界面，剪贴板管理
+│   │   │   ├── ClipboardInputMethodService.kt   # IME 输入法服务，内嵌剪贴板面板
+│   │   │   ├── ClipboardService.kt              # 后台剪贴板监听服务
+│   │   │   ├── ClipboardViewModel.kt            # ViewModel，数据绑定
+│   │   │   ├── ClipboardRepository.kt           # 数据仓库层
+│   │   │   ├── ClipboardItem.kt                 # 剪贴项数据模型
+│   │   │   ├── ClipboardAdapter.kt              # 主界面 RecyclerView 适配器
+│   │   │   ├── ImeClipboardAdapter.kt           # IME 面板 RecyclerView 适配器
+│   │   │   ├── GitHubHelper.kt                  # GitHub Release 检查更新
+│   │   │   └── Logger.kt                        # 日志工具类（文件日志 + 自动清理）
+│   │   └── src/main/res/                        # 布局、字符串资源
+│   ├── build.gradle.kts                         # Gradle 根构建脚本
+│   ├── settings.gradle.kts                      # Gradle 设置
+│   ├── gradle.properties                        # Gradle 属性
+│   ├── version.properties                       # 版本号真源
+│   └── local.properties                         # Android SDK 本地路径
+├── harmony/                                     # 鸿蒙版代码
+├── scripts/
+│   ├── build.bat                                # Android 一键构建脚本
+│   ├── build-harmony.bat                        # 鸿蒙一键构建脚本
+│   ├── clean.bat                                # 清理构建产物（Android + 鸿蒙）
+│   ├── gh-release.bat                           # 单独补发 GitHub Release
+│   ├── deploy-harmony.bat                       # 鸿蒙版装机脚本 (hdc)
+│   └── tools/
+│       ├── tee-log.ps1                          # 日志 tee 包装器
+│       ├── build-info.js                        # 鸿蒙构建信息
+│       └── harmony-version.js                   # 鸿蒙版本号工具
+└── memory-bank/                                 # 知识库
 ```
 
 ## 关键约定
 
 ### 构建命令
-- **完整构建**: 通过 `build.bat` 执行（含 git 提交/推送/打 tag/`gh release create`）
-  - `build.bat` — 构建 + 递增版本 + GitHub Release
-  - `build.bat release` — 同双击
-  - `build.bat setup` — 安装 Android SDK 组件
-  - `build.bat clean` — 清理构建产物
-- **自测编译（不推送）**: 直接跑 Gradle 命令，禁止跑 `build.bat`（会真的 push + 发 Release）
+- **完整构建**: 通过 `scripts\build.bat` 执行（含 git 提交/推送/打 tag/`gh release create`）
+  - `scripts\build.bat` — 构建 + 递增版本 + GitHub Release
+  - `scripts\build.bat release` — 同双击
+  - `scripts\build.bat setup` — 安装 Android SDK 组件
+  - `scripts\build.bat clean` — 清理构建产物
+- **自测编译（不推送）**: 直接跑 Gradle 命令，禁止跑 `scripts\build.bat`（会真的 push + 发 Release）
   ```cmd
   set JAVA_HOME=D:\Tools\DevTools\Java\JDK\jdk-21.0.10-oracle
   set ANDROID_HOME=D:\Tools\DevTools\Android\Sdk
   set ANDROID_SDK_ROOT=D:\Tools\DevTools\Android\Sdk
   set "PATH=D:\Tools\DevTools\Java\JDK\jdk-21.0.10-oracle\bin;D:\Tools\DevTools\gradle\gradle-8.5\bin;%PATH%"
-  cd /d "d:\WorkSpace\test\ClipboardMerger"
+  cd /d "d:\WorkSpace\test\ClipboardMerger\android"
   call gradle assembleDebug & exit
   ```
   **关键**：`gradle` 是 `.bat` 文件，必须用 `call` 调用，否则控制权转移后 `& exit` 不会执行，终端无法自关闭。
-- **单独补发 Release**: `gh-release.bat`（以最后一个提交为目标，不编译 / 不改版本，`check` = 只读预检）
+- **单独补发 Release**: `scripts\gh-release.bat`（以最后一个提交为目标，不编译 / 不改版本，`check` = 只读预检）
 - **版本号**: `version.properties` 是唯一真源，构建时自动递增小版本号
 
 ### 代码规范
@@ -97,11 +109,11 @@ ClipboardMerger/
 
 ## 常用操作
 - **编译检查**: `gradle assembleDebug`（不推送，不自增版本）
-- **完整构建发布**: `build.bat`（含 git 提交/推送/打 tag/GitHub Release）
-- **清理构建缓存**: `build.bat clean` 或手动删除 `build/` 目录和 `app/build/` 目录
-- **安装 SDK 组件**: `build.bat setup`
+- **完整构建发布**: `scripts\build.bat`（含 git 提交/推送/打 tag/GitHub Release）
+- **清理构建缓存**: `scripts\build.bat clean` 或手动删除 `build/` 目录和 `app/build/` 目录
+- **安装 SDK 组件**: `scripts\build.bat setup`
 
 ## 项目记忆
 - Git 仓库位于 `d:\WorkSpace\test\ClipboardMerger`，所有代码变更通过 git 管理
-- 版本号由 `version.properties` 管理，`build.bat` 自动递增
+- 版本号由 `version.properties` 管理，`scripts\build.bat` 自动递增
 - GitHub Release 仓库: `xiaobailong/ClipboardMerger`

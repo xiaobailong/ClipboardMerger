@@ -1,6 +1,20 @@
 # 剪集 (JianJi)
 
 一个 Android 剪贴板历史记录收集工具，通过注册系统输入法（IME）获取后台剪贴板监听权限，解决 Android 10+ 对普通应用后台读取剪贴板的限制。支持将收集到的内容通过 GitHub API 同步到远程仓库。
+> 鸿蒙（HarmonyOS NEXT）用户：本 APK 在鸿蒙上**无法被识别成输入法**（卓易通容器里的 IME 注册不到系统），
+> 请看原生版本 [`harmony/README.md`](harmony/README.md)（HAP 输入法，功能 1:1 移植，已真机验证）。
+>
+> **鸿蒙原生版现状**（2026-10-08，真机 HLS-AL00 / API 26 实测）：
+> - 已实现：键盘面板五键 +「▼ 收起」+ 历史列表；键盘内 **⚙ 设置**（切换目标 / 键盘高度 / 键盘皮肤 / 键盘进程日志，全部键盘自持）；
+>   权限设置（剪贴板读取权限 / 输入法设置，已授权绿标 + 一键跳系统页）；GitHub 拉取/保存 + 「网络诊断」；
+>   剪贴板历史跨进程一致（公共事件 `add`/`remove`/`clear`/`snapshot`）；日志（开关 + **清理日志** + 导出到 Download）；
+>   **IME 状态栏操作反馈**（粘贴/全部粘贴/清空/删除/切换均在底部状态栏实时显示结果，2.5 秒后自动恢复记录数）。
+> - **已移除的功能（平台不可实现，非缺陷）**：绑定App、通知提醒、后台保活（WorkScheduler 定时补活）、自启动/电池权限项 ——
+>   这些都依赖"检测前台应用"或"后台常驻"，而本版本对普通应用**不提供**这些能力，保留只会误导，故整体删除。
+> - **平台限制（实测）**：①输入法 Extension 跑在**独立沙箱**，读不到 App 的 `preferences` ⇒ 键盘相关设置只在键盘内 ⚙ 生效；
+>   ②DataShare（无服务端类）、无障碍（鸿蒙 7 无入口）、`bundleState`/`usageStatistics`（需系统权限 `BUNDLE_ACTIVE_INFO`）
+>   三条路均不可用 ⇒ 无法实现"进入某个 App 时提醒"。
+>   细节见 [`harmony/README.md`](harmony/README.md) 的「实测结论」与 `memory-bank/pitfalls.md` 的 `PIT-039`~`PIT-045`。
 
 ---
 
@@ -172,7 +186,7 @@ App 内有两个 Tab 页：**「剪切板」** 和 **「GitHub」**，切换到 
 
 ### 版本标识
 
-App 主界面标题栏显示当前版本号（如 `v1.29`），与 `version.properties` 中的 `versionName` 一致。每次执行 `build.bat` 会自动递增 `versionCode`，方便区分不同构建版本。
+App 主界面标题栏显示当前版本号（如 `v1.29`），与 `version.properties` 中的 `versionName` 一致。每次执行 `scripts\build.bat` 会自动递增 `versionCode`，方便区分不同构建版本。
 
 ---
 
@@ -188,27 +202,43 @@ App 主界面标题栏显示当前版本号（如 `v1.29`），与 `version.prop
 | Android Gradle Plugin | 8.2.0 | 项目依赖 |
 | Kotlin | 1.9.20 | 项目依赖 |
 
-### 快速构建
+### 快速构建（Android）
 
-项目根目录提供了 `build.bat` 一键构建脚本：
+项目根目录的 `scripts\` 目录提供了 `build.bat` 一键构建脚本：
 
 ```bash
 # 构建 APK（自动递增版本号）
-build.bat
+scripts\build.bat
 
 # 构建 + Git推送 + GitHub Release（自动递增版本、打tag、推送代码、创建Release并上传APK）
-build.bat release
+scripts\build.bat release
 
 # 首次使用：安装缺失的 SDK 组件
-build.bat setup
+scripts\build.bat setup
 
 # 清理构建产物
-build.bat clean
+scripts\build.bat clean
 ```
+
+### 快速构建（鸿蒙）
+
+```bash
+# 构建 HAP（不递增版本、不动 git）
+scripts\build-harmony.bat
+
+# 构建 + 递增版本 + git 提交/推送 + 打 tag + GitHub Release
+scripts\build-harmony.bat release
+
+# 清理鸿蒙构建产物
+scripts\build-harmony.bat clean
+```
+
+> 鸿蒙构建依赖 DevEco Studio（hvigor + HarmonyOS SDK），脚本会自动定位工具链路径。
+> 详细见 [`harmony/README.md`](harmony/README.md)。
 
 ### 手动构建
 
-如果 build.bat 不可用，可按以下步骤手动构建：
+如果 scripts\build.bat 不可用，可按以下步骤手动构建：
 
 1. 确保 `JAVA_HOME` 和 `ANDROID_HOME` 环境变量已配置
 
@@ -230,7 +260,7 @@ build.bat clean
 
 ### 自定义构建环境路径
 
-编辑 `build.bat` 和 `gradle.properties`，修改以下变量：
+编辑 `scripts\build.bat` 和 `gradle.properties`，修改以下变量：
 - `JAVA_HOME` — JDK 安装路径
 - `ANDROID_HOME` — Android SDK 路径
 - `GH_EXE` — GitHub CLI (`gh.exe`) 绝对路径（默认 `C:\Program Files\GitHub CLI\gh.exe`）
@@ -244,11 +274,11 @@ versionCode=27
 versionName=1.26
 ```
 
-每次执行 `build.bat` 会自动递增 `versionCode`。
+每次执行 `scripts\build.bat` 会自动递增 `versionCode`。
 
 ### 发布 Release
 
-使用 `build.bat release` 可以一键完成构建 → 发布全流程：
+使用 `scripts\build.bat release` 可以一键完成构建 → 发布全流程：
 
 1. **检查环境** — 通过 `GH_EXE` 绝对路径检查 `gh` CLI 是否存在
 2. **递增版本** — 自动递增 `versionCode`
@@ -262,7 +292,7 @@ versionName=1.26
 - 安装 [GitHub CLI](https://cli.github.com/)：`winget install --id GitHub.cli`
 - 登录认证：`gh auth login`
 - 确保 `gh auth status` 显示 Token 有 `repo` 权限
-- 若 `gh.exe` 未安装在默认路径，编辑 `build.bat` 中 `GH_EXE` 变量
+- 若 `gh.exe` 未安装在默认路径，编辑 `scripts\build.bat` 中 `GH_EXE` 变量
 
 ---
 
@@ -299,48 +329,58 @@ adb pull /sdcard/Download/JianJi/ .
 ```
 ClipboardMerger/
 ├── README.md                          # 本文件
-├── build.bat                          # 一键构建脚本（含 release 发布）
-├── clean.bat                          # 清理脚本
-├── version.properties                 # 版本号配置
-├── build.gradle.kts                   # 根项目构建配置
-├── settings.gradle.kts                # 项目设置
-├── gradle.properties                  # Gradle 属性
-├── app/
-│   ├── build.gradle.kts               # App 模块构建配置
-│   ├── proguard-rules.pro             # 混淆规则
-│   └── src/main/
-│       ├── AndroidManifest.xml         # 应用清单
-│       ├── java/com/example/clipboardmerger/
-│   │   ├── MainActivity.kt                # 主界面（含 Tab 切换和 GitHub 操作回调）
-│   │   ├── ClipboardService.kt            # 后台剪贴板监听服务
-│   │   ├── ClipboardInputMethodService.kt # 输入法服务（IME）
-│   │   ├── ClipboardRepository.kt         # 本地存储（SharedPreferences JSON，最多 5000 条）
-│   │   ├── ClipboardViewModel.kt          # ViewModel 数据管理
-│   │   ├── ClipboardAdapter.kt            # 主界面列表适配器
-│   │   ├── ImeClipboardAdapter.kt         # IME 键盘历史列表适配器（含多选）
-│   │   ├── ClipboardItem.kt               # 数据模型
-│   │   ├── GitHubHelper.kt                # GitHub API 交互（拉取/保存文件）
-│   │   └── Logger.kt                      # 日志工具
-│       ├── res/
-│           ├── layout/
-│           │   ├── activity_main.xml           # 主界面布局（含 TabLayout）
-│           │   ├── content_github.xml          # GitHub Tab 页面布局
-│           │   ├── dialog_github_settings.xml  # GitHub 设置弹窗布局
-│           │   ├── dialog_settings.xml         # 全局设置弹窗布局
-│           │   ├── dialog_ime_settings.xml      # IME 切换目标设置弹窗布局
-│           │   ├── ime_view.xml                # IME 键盘布局
-│           │   ├── item_clipboard.xml          # 主列表项布局
-│           │   ├── item_ime_clipboard.xml      # IME 列表项布局（含复选框）
-│           ├── menu/
-│           │   └── toolbar_menu.xml            # Toolbar 设置菜单（日志 / 切换目标 / 关于）
-│           ├── values/
-│           │   ├── strings.xml                 # 字符串资源
-│           │   ├── colors.xml                  # 颜色定义
-│           │   └── themes.xml                  # 主题定义
-│           ├── xml/
-│           │   └── input_method_config.xml     # 输入法配置
-│           └── drawable/
-│               └── ic_launcher_foreground.xml  # 启动图标
+├── scripts/
+│   ├── build.bat                      # 一键构建脚本（Android，含 release 发布）
+│   ├── build-harmony.bat              # 一键构建脚本（鸿蒙，含 release 发布）
+│   ├── clean.bat                      # 清理脚本（Android + 鸿蒙）
+│   ├── gh-release.bat                 # 单独补发 GitHub Release
+│   ├── deploy-harmony.bat             # 鸿蒙版装机脚本 (hdc)
+│   └── tools/
+│       ├── tee-log.ps1                # 日志 tee 包装器
+│       ├── build-info.js              # 鸿蒙构建信息
+│       └── harmony-version.js         # 鸿蒙版本号工具
+├── android/                           # Android 工程
+│   ├── version.properties             # 版本号配置
+│   ├── build.gradle.kts               # 根项目构建配置
+│   ├── settings.gradle.kts            # 项目设置
+│   ├── gradle.properties              # Gradle 属性
+│   └── app/
+│       ├── build.gradle.kts           # App 模块构建配置
+│       ├── proguard-rules.pro         # 混淆规则
+│       └── src/main/
+│           ├── AndroidManifest.xml     # 应用清单
+│           ├── java/com/example/clipboardmerger/
+│           │   ├── MainActivity.kt                # 主界面（含 Tab 切换和 GitHub 操作回调）
+│           │   ├── ClipboardService.kt            # 后台剪贴板监听服务
+│           │   ├── ClipboardInputMethodService.kt # 输入法服务（IME）
+│           │   ├── ClipboardRepository.kt         # 本地存储（SharedPreferences JSON，最多 5000 条）
+│           │   ├── ClipboardViewModel.kt          # ViewModel 数据管理
+│           │   ├── ClipboardAdapter.kt            # 主界面列表适配器
+│           │   ├── ImeClipboardAdapter.kt         # IME 键盘历史列表适配器（含多选）
+│           │   ├── ClipboardItem.kt               # 数据模型
+│           │   ├── GitHubHelper.kt                # GitHub API 交互（拉取/保存文件）
+│           │   └── Logger.kt                      # 日志工具
+│           └── res/
+│               ├── layout/
+│               │   ├── activity_main.xml           # 主界面布局（含 TabLayout）
+│               │   ├── content_github.xml          # GitHub Tab 页面布局
+│               │   ├── dialog_github_settings.xml  # GitHub 设置弹窗布局
+│               │   ├── dialog_settings.xml         # 全局设置弹窗布局
+│               │   ├── dialog_ime_settings.xml      # IME 切换目标设置弹窗布局
+│               │   ├── ime_view.xml                # IME 键盘布局
+│               │   ├── item_clipboard.xml          # 主列表项布局
+│               │   └── item_ime_clipboard.xml      # IME 列表项布局（含复选框）
+│               ├── menu/
+│               │   └── toolbar_menu.xml            # Toolbar 设置菜单（日志 / 切换目标 / 关于）
+│               ├── values/
+│               │   ├── strings.xml                 # 字符串资源
+│               │   ├── colors.xml                  # 颜色定义
+│               │   └── themes.xml                  # 主题定义
+│               ├── xml/
+│               │   └── input_method_config.xml     # 输入法配置
+│               └── drawable/
+│                   └── ic_launcher_foreground.xml  # 启动图标
+├── harmony/                           # 鸿蒙工程（独立，不与 Gradle 关联）
 ```
 
 ---

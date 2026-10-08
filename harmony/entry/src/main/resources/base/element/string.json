@@ -1,0 +1,32 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "剪集输入法主模块"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "剪集：剪贴板历史与设置"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "剪集"
+    },
+    {
+      "name": "ime_label",
+      "value": "剪集输入法"
+    },
+    {
+      "name": "ime_desc",
+      "value": "把剪贴板历史当键盘用：点一下就粘贴"
+    },
+    {
+      "name": "reason_read_pasteboard",
+      "value": "用于收集你复制过的文字，生成剪贴板历史"
+    },
+    {
+      "name": "keepalive_desc",
+      "value": "定时补活：到点兜底采集一次剪贴板"
+    }
+  ]
+}

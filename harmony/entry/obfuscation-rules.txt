@@ -1,0 +1,4 @@
+# 混淆规则（默认关闭，见 build-profile.json5：obfuscation.ruleOptions.enable = false）
+# 若将来开启：注意剪贴板历史是按 JSON 字段名（text / timestamp）序列化的，
+# 需要保留属性名，否则历史会读不出来（属性名混淆会让 JSON.parse 后的字段取不到）。
+# 例：-keep-property-name text timestamp

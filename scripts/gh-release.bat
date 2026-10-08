@@ -12,7 +12,7 @@ set "_CM_GH_RC=%ERRORLEVEL%"
 exit /b %_CM_GH_RC%
 
 :gh_relaunched
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 REM ============================================
 REM  剪集 - standalone GitHub Release script (gh only)
@@ -83,7 +83,7 @@ echo  [代理] 使用 GH_PROXY=%GH_PROXY%
 :no_proxy
 
 
-cd /d "%~dp0"
+cd /d "%~dp0.."
 if errorlevel 1 (
     echo [错误] 无法进入脚本所在目录
     exit /b 1
@@ -109,12 +109,12 @@ call :check_gh
 if errorlevel 1 goto :fail
 
 echo [2/6] 读取版本信息...
-if not exist "version.properties" (
-    echo [错误] 找不到 version.properties
+if not exist "android\version.properties" (
+    echo [错误] 找不到 android\version.properties
     goto :fail
 )
-for /f "tokens=2 delims==" %%i in ('findstr "versionName=" version.properties') do set "V_NAME=%%i"
-for /f "tokens=2 delims==" %%i in ('findstr "versionCode=" version.properties') do set "V_CODE=%%i"
+for /f "tokens=2 delims==" %%i in ('findstr "versionName=" android\version.properties') do set "V_NAME=%%i"
+for /f "tokens=2 delims==" %%i in ('findstr "versionCode=" android\version.properties') do set "V_CODE=%%i"
 if "%GH_TAG%"=="" set "GH_TAG=v%V_NAME%"
 if "%GH_TAG%"=="v" (
     echo [错误] 读不到 versionName，无法推断标签，请显式传入标签
@@ -146,7 +146,7 @@ echo [4/6] 定位 APK...
 set "APK_PATH=%GH_APK%"
 if "%APK_PATH%"=="" call :find_apk
 if "%APK_PATH%"=="" (
-    echo [错误] 未找到 APK：仓库根与 build\outputs\apk\debug\ 都没有
+    echo [错误] 未找到 APK：仓库根与 android\build\outputs\apk\debug\ 都没有
     echo        请先构建，或显式传入路径: gh-release.bat %GH_TAG% ＜apk路径＞
     goto :fail
 )
@@ -400,11 +400,11 @@ REM  then build\outputs\apk\debug\*.apk
 REM ============================================
 :find_apk
 set "APK_PATH="
-for %%f in ("JianJi-v%V_NAME%-%V_CODE%.apk") do if exist "%%~f" set "APK_PATH=%%~f"
+for %%f in ("android\JianJi-v%V_NAME%-%V_CODE%.apk") do if exist "%%~f" set "APK_PATH=%%~f"
 if not "%APK_PATH%"=="" exit /b 0
-for %%f in (*.apk) do if exist "%%~f" set "APK_PATH=%%~f"
+for %%f in ("android\*.apk") do if exist "%%~f" set "APK_PATH=%%~f"
 if not "%APK_PATH%"=="" exit /b 0
-for /f "delims=" %%f in ('dir /s /b "build\outputs\apk\debug\*.apk" 2^>nul') do set "APK_PATH=%%f"
+for /f "delims=" %%f in ('dir /s /b "android\build\outputs\apk\debug\*.apk" 2^>nul') do set "APK_PATH=%%f"
 exit /b 0
 
 REM ============================================

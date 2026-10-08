@@ -1,0 +1,26 @@
+/node_modules
+/oh_modules
+/local.properties
+/.idea
+**/build
+/.hvigor
+/.clangd
+/.clang-format
+/.clang-tidy
+**/.test
+/.appanalyzer
+/.cxx
+
+# 本地签名材料（DevEco「自动签名」生成，绝不入库）
+# 只放行 README 说明；.p7b(Profile) 放这里，证书/私钥放 D:\Tools\DevTools\hmos\signature\
+/signature/*
+!/signature/README.md
+*.p12
+*.cer
+*.p7b
+*.csr
+*.pem
+
+# DevEco 自动签名会把「材料路径 + 加密口令」写回 build-profile.json5（机器本地凭据）⇒ 不入库
+# 仓库里的基线是 build-profile.template.json5，新机器复制它即可
+/build-profile.json5

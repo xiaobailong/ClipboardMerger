@@ -140,4 +140,42 @@
   ①「后台监听服务」开关关掉 ⇒ 服务停、通知消失（代价见上）；②新增「**隐藏常驻通知**」开关（`hide_persistent_notification`）= 常驻通知改用 `IMPORTANCE_NONE` 的渠道（`clipboard_service_channel_hidden`）——
   通知记录照旧提交（`startForeground` 成立、服务不被杀），但系统不展示；渠道属性不可变 ⇒ 两条渠道 ID 二选一、切换时 `stopService` + 重新拉起服务重建渠道与通知。风险：个别 ROM 可能因“服务没有可见通知”缩短后台存活时间，因此做成用户可关的开关并在说明里点明“发现剪贴板不再收集就关掉它”。
 - 追加（2026-10-01 v1.88，用户反馈“一键清理后 App 不做自拉起，后台监控消失”）: 新增 `KeepAlive`（自拉起三件套：`BootReceiver` 开机/更新、`onTaskRemoved` + `AlarmManager` + `PendingIntent.getForegroundService`、输入法服务启动时补拉）+ 「更多 → 后台保活设置」（说明页 + 打开应用信息 + 申请忽略电池优化，`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`）。设计取舍：**把输入法服务当锚点**是最可靠的自救点（用户点输入框系统必然拉起剪集输入法），因此把"补拉后台服务"挂在它身上；被系统 force-stop 后不做无意义的轮询自拉起（Android 不允许），改为在说明页讲清系统侧该怎么设。
+- 追加（2026-10-07，并入已删除的 `handover-bind-app.md` 里仍有用、KB 原先没有的实现细节）: ①**前台 App 检测** = `usageStatsManager.queryEvents(now-15s, now)` 取 `MOVE_TO_FOREGROUND`（`ClipboardService.getForegroundPackage()`）+ `Handler.postDelayed(…, 5000L)` 每 5s 一轮；v1.74 的 `queryUsageStats(INTERVAL_DAILY)` + `lastTimeUsed` 排序误差大（桌面会排在目标 App 前面），已弃用。②**应用列表可见性** = `AndroidManifest` 加 `<queries>`（MAIN intent）+ `PackageManager.MATCH_ALL`，否则 Android 11+ 只看得见约 21 个系统 App（修好后 112 个）。③**服务保活** = `startForeground()` + `FOREGROUND_SERVICE_DATA_SYNC` 声明，常驻通知走 `IMPORTANCE_MIN` 渠道（否则华为/鸿蒙下后台服务约 1.5s 被杀）。④**关键常量** = 检测间隔 `5000L`、UsageEvents 窗口 `15_000L`、提醒防抖 `15_000L`、`AUTO_CLOSE_MS=60_000L`、`PICKER_DELAY_MS=400L`、`MIN_PICKER_VISIBLE_MS=250L`、`CARD_FALLBACK_DELAY_MS=1_600L`、渠道 `bind_app_channel_v3`、通知 ID `2`、Settings key `bound_app_package`/`bound_app_label`。⑤**日志定位法** = 手机侧 `Download/JianJi/jianji_log_<yyyy-MM-dd>.txt`，关键词 grep `bound app.*foreground` / `bind app notification` / `PickerActivity` / `showInputMethodPicker` / `cooldown active` / `no MOVE_TO_FOREGROUND`。⑥历史测试机 = `HUAWEI LIO-AN00m`（Android 12 / SDK 31）。
 
+## ADR-013 鸿蒙（HarmonyOS）分支：原生 HAP 输入法，与 Android 工程并存
+- 日期: 2026-10-05 | 状态: 已采纳（分支 `harmonyos`）
+- 背景: 用户主力机换成鸿蒙 7（HarmonyOS NEXT），在**卓易通**（安卓兼容容器）里装本 APK 后**不被识别成输入法**（`PIT-034`）。鸿蒙已不原生跑 APK，输入法只能由原生 HAP 通过 `InputMethodExtensionAbility` 注册（官方《实现一个输入法应用》：`type: "inputMethod"` + `metadata: ohos.extension.input_method`）。
+- 决策: ①新建分支 `harmonyos`（分支名 = 鸿蒙的英文名）；②仓库内新增 `harmony/` DevEco 子工程（根 Gradle 不 include，两套构建互不影响）；③`entry` 模块 = 输入法 Extension（键盘）+ 设置页 UIAbility；④键盘 UI 移植 Android 版 IME 面板语义（点一条=插入、多选=合并插入、退格/回车/刷新/清空、单条删除），历史存储用 preferences（去重规则、上限 5000 对齐 `ClipboardRepository`）；⑤bundleName 与 Android 版相同（`com.example.clipboardmerger`）；⑥日志沿用「hilog + 沙箱文件 + 持久化开关」（对齐 `Logger`）。
+- 理由: 只有原生 HAP 能拿到「默认输入法」身份；`harmony/` 独立目录 ⇒ Android 侧构建/发布流程零改动。
+- 备选与为何不选: 继续改 Android 侧（Manifest / targetSdk / 权限）期待容器放行 —— 容器内的 IME 注册不到宿主鸿蒙，改多少都没用；做成 AppGallery 上架包 —— 当前自用，先走 DevEco 自动签名。
+- 影响与约束: ①输入法 Extension 受「基础访问模式」约束**不能联网** ⇒ GitHub 同步只能在 `EntryAbility` 侧实现；②API 12+ 读剪贴板需 `ohos.permission.READ_PASTEBOARD`（受限 user_grant，可能要 ACL），拿不到就只剩键盘功能，设置页会显示错误码；③鸿蒙版版本号在 `AppScope/app.json5`，与 `version.properties` 各自管；④**本机没有鸿蒙 SDK**，ArkTS 代码只做了静态检查，待 DevEco 编译 + 真机复验（未验证点列在 `harmony/README.md`）。
+- 复用入口: `harmony/README.md`（构建 / 签名 / 启用输入法 / 与 Android 版差异）
+- 追加（2026-10-05 首次真编译 + 发布）: 工具链 = 华为 **command-line-tools v26.0.0.851**（含 hvigor 6.26.8 / ohpm / node / `sdk\default\{openharmony,hms}`，HarmonyOS SDK API 26）；`build-harmony.bat` 端到端验证通过（自动找到工具链 → `BUILD SUCCESSFUL` → 产物收成 `build\harmony\JianJi-HarmonyOS-<版本>.hap`，默认不碰 git）；已推送分支 `harmonyos` + tag `harmony-v1.89` + Release（附件为**未签名** HAP）。真机安装仍缺**华为签名**：路径①DevEco 自动签名（GUI，需账号）；路径②AGC 网页手动签名（本地 keytool 生成 .p12+CSR → 换 .cer + 调试 Profile(.p7b) → `sdk\...\toolchains\lib\hap-sign-tool.jar` 签）。API 26 与旧文档的 4 处接口差异见 `PIT-036`。
+
+
+## ADR-014 鸿蒙输入法选择列表：App 内自绘中文列表（不再用系统选择器；暂不用 InputMethodListDialog）
+- 日期: 2026-10-07 | 状态: 已废弃（被 ADR-015 取代：App 内输入法入口与弹框已按用户要求删除）
+- 背景: 主界面状态条点开的是系统选择器 `showOptionalInputMethods()` —— 列的是输入法自身的**英文标识**、无法本地化、API 18 起 deprecated；用户看不出哪个是「剪集」。同时 App 侧无法保证能直接切换（`PIT-047`），需要给用户一条能走通的路。
+- 决策: ①在 `Index.ets` 自绘「切换输入法」弹框（`dialog === 'ime'`）：行数据 = `getAllInputMethodsSync()` 的 `label`（中文）+ 包名副行 + 「当前使用 ✓」/「剪集 · 点此启用」徽标；点行 `switchInputMethod()`，失败兜底跳系统「输入法设置」页；②原系统选择器**降级**为弹框内「系统选择器」按钮（兼容旧版本/异常场景）；③暂不接 IME Kit 的 `InputMethodListDialog`（`@ohos.inputMethodList.d.ets`，面向系统应用与输入法应用、系统渲染，文案/样式不可控，也解决不了“中文名”诉求）。
+- 理由: 只有自绘列表能把“哪个是剪集”讲清楚（中文 label + 徽标），并且在同一处给出三条出路（直切 / 系统选择器 / 输入法设置）。
+- 备选与为何不选: ①继续用系统选择器 —— 英文标识 + deprecated；②用 `InputMethodListDialog` —— 文案/版式不可控，且要 `CustomDialogController` 与系统版式耦合；③让键盘进程代切（键盘能切：`KeyboardController.switchIme`）—— 剪集不是当前输入法时键盘进程不保证活着，不可靠。
+- 影响与约束: ①“直切”受 `switchInputMethod` 限制，兜底跳转是硬要求（`PIT-047`）；②列表只反映系统**已启用**的输入法，剪集未启用时用红字引导去「输入法设置」勾选；③键盘内「⚙ → 切换目标」仍归键盘沙箱自持（`PIT-039`），与 App 侧列表互不替代。
+- 复用入口: `harmony/entry/src/main/ets/pages/Index.ets` 的 `openImeList / switchToIme / findImeProperty / imeListHeight`
+
+## ADR-015 去掉 App 内的输入法切换入口与弹框（状态条改只读，切换只走系统「输入法设置」页）
+- 日期: 2026-10-07 | 状态: 已采纳（取代 ADR-014）
+- 背景: ADR-014 在 App 内自绘了「切换输入法」弹框（`dialog === 'ime'` + `openImeList/switchToIme/findImeProperty/imeListHeight/showImePicker`）。用户明确要求：**去掉状态条点击后的动作，并删掉相应弹框**。
+- 决策: ①`@Builder topBar()` 去掉 `.onClick`，状态条改为**只读展示**（左 = 条数 / 已选，右 = `输入法: 已激活 ✅` 或 `未激活 ⚠️ 当前：xxx`），文案去掉「点此切换」；②删除弹框分支 `dialog === 'ime'` 与 5 个专用方法、2 个状态（`curImeId` / `ownRegistered`）；③App 内不再提供任何切换/弹出选择器入口 —— 切换输入法统一走「更多 → 权限设置 → 输入法设置」（`openImeSettings()` 保留，跳系统设置页，中文列表）。
+- 理由: App 侧本来就无法可靠切换（`PIT-047`：`switchInputMethod` 要求调用方是当前输入法），自绘列表点一行大概率还要跳系统页 —— 两层入口反而绕；状态条只需表达「现在是不是剪集、当前是谁」。
+- 备选与为何不选: ①保留弹框但禁用点击（死代码，入口语义矛盾）；②只在「未激活」时可点（用户要求直接去掉动作，未给条件）；③改回系统 `showOptionalInputMethods()`（英文标识 + API 18 起 deprecated）。
+- 影响与约束: ①主界面不再能一键切到剪集，用户走系统设置页；键盘内的「切换」键（`KeyboardController.switchIme`，`PIT-039` 沙箱自持）不受影响；②`PIT-047` 的「App 侧失败兜底」讨论随之作废（App 侧已无该入口，该条已加追加说明）；③`ISSUE-008` 的复发判据已按本条修订（`'ime'` 分支不应再出现）；④`inputMethod.switchInputMethod` / `showOptionalInputMethods` 在 App 进程不再被调用 ⇒ 构建日志少一条 deprecated 告警。
+- 复用入口: `harmony/entry/src/main/ets/pages/Index.ets` 的 `topBar() / imeBarText() / countText() / openImeSettings()`
+
+## ADR-016 鸿蒙装机独立成 `deploy-harmony.bat`（走 hdc 调试通道，完全不碰 git）
+- 日期: 2026-10-07 | 状态: 已采纳
+- 背景: 出包（`build-harmony.bat`）与装机一直靠手工敲 `hdc install -r …` + `aa force-stop`，而手工步骤在本项目反复踩坑：忘了 force-stop ⇒ 输入法进程跑旧代码（`PIT-040`）；没确认 `install bundle successfully` ⇒ 以为装上了（`PIT-044`）；拿旧包当新包（`PIT-029`）；`hdc` 不在 PATH（`PIT-036`）；设备 `Unauthorized` 时不知道怎么恢复（`PIT-045`）。
+- 决策: 新增仓库根 `deploy-harmony.bat`（与 `build-harmony.bat` 平级，**只做装机**）：①自动找 `hdc.exe`（`HOS_CLT` 默认 `D:\Tools\DevTools\hmos\command-line-tools` → `DEVECO_HOME` → 常见 DevEco 安装目录 → `PATH`）；②`list` 子命令只查设备；③默认装最新构建的 `harmony\entry\build\default\outputs\default\entry-default-signed.hap`，也可传 HAP 路径；④`install -r` 保留数据；⑤装机后 `aa force-stop`；⑥读 `tools\harmony-version.js` 与 `bm dump -n <bundle>` 比对 versionName；⑦尝试 `aa start` 拉起 App（锁屏被系统拒时给提示而非报错）；⑧日志走 `tools\tee-log.ps1` → `build\logs\deploy_<ts>.log`；⑨**不含任何 git 操作**。
+- 理由: 装机是高频动作且失败模式都有明确判据 ⇒ 固化成一个脚本可一次性消灭上述 5 个坑；「出包 / 装机 / 发布」三件事分离，各自可单独重跑（发布仍只在 `build.bat` 与 `build-harmony.bat release` 里）。
+- 备选与为何不选: ①给 `build-harmony.bat` 加 `install` 开关 —— 出包与装机混在一条命令里，失败时说不清是编译还是装机的问题，也违反 `PIT-044` 铁律 1（构建与装机必须分成两条命令）；②继续手工敲命令 —— 就是上面那些坑的来源；③用 DevEco Studio 的 Run —— 要 GUI + 账号，命令行/自动化场景用不上。
+- 影响与约束: ①脚本只认「已构建好的签名 HAP」，找不到会提示先跑 `build-harmony.bat`；②`-r` 在个别机型（HLS-AL00）不顶用，失败分支给出 `uninstall` 兜底命令（会丢数据，需人工决定）；③「手机锁屏 ⇒ 拉不起 App」是系统限制（`10106102`），脚本只提示，不算失败（装机本身已成功，退出码 0）；④`.clinerules` 的目录结构清单与 `harmony/README.md` 已同步登记该脚本。
+- 复用入口: `deploy-harmony.bat`、`harmony/README.md` 的「装机脚本 `deploy-harmony.bat`」一节

@@ -1,0 +1,11 @@
+{
+  "subtypes": [
+    {
+      "icon": "$media:icon",
+      "id": "JianJiInputMethod",
+      "label": "$string:ime_label",
+      "locale": "zh-CN",
+      "mode": "lower"
+    }
+  ]
+}

@@ -12,15 +12,16 @@
 - 未明确要求时不新建文档、不写长报告；收尾只讲：改了什么、怎么验证的、`tmp\` 是否已清空。
 
 ## 3. 目录结构
-- 构建：`build.bat`（默认含 git 提交/推送/打 tag/`gh release create`）、`build.bat release|setup|clean`、`clean.bat`；
-  日志 tee 包装器 `tools\tee-log.ps1`（逐行：先写文件 → 再回显控制台）。
-- 日志 `build\logs\build_<ts>.log`；APK `build\outputs\apk\debug\` + 仓库根副本；版本号真源 `version.properties`。
-- 代码 `app\src\main\java\com\example\clipboardmerger\`；知识库 `memory-bank\`；临时文件 `tmp\`（gitignored）。
+- 构建：`scripts\build.bat`（默认含 git 提交/推送/打 tag/`gh release create`）、`scripts\build.bat release|setup|clean`、`scripts\clean.bat`、
+  `scripts\build-harmony.bat [release|clean]`（鸿蒙出包，默认不碰 git）、`scripts\deploy-harmony.bat [list|<x.hap>]`（鸿蒙装机：走 hdc 装最新签名 HAP + force-stop + 版本校验，**不碰 git**）；
+  日志 tee 包装器 `scripts\tools\tee-log.ps1`（逐行：先写文件 → 再回显控制台）。
+- 日志 `build\logs\build_<ts>.log`；APK `android\build\outputs\apk\debug\` + 仓库根副本；版本号真源 `android\version.properties`。
+- 代码 `android\app\src\main\java\com\example\clipboardmerger\`；知识库 `memory-bank\`；临时文件 `tmp\`（gitignored）。
 
 ## 4. 禁止操作
-- 禁止 `git commit` / `push` / 打 tag / 发 Release（只由 `build.bat` 做，且需用户明确要求）。
-- **禁止为了自测跑 `build.bat`**（会真的 push + 发 Release）；校验改动用 Gradle 直跑。
-- 禁止把中间文件写在仓库根或 `app\` / `memory-bank\` / `.clinerules\`（一律 `tmp\`）。
+- 禁止 `git commit` / `push` / 打 tag / 发 Release（只由 `scripts\build.bat` 做，且需用户明确要求）。
+- **禁止为了自测跑 `scripts\build.bat`**（会真的 push + 发 Release）；校验改动用 Gradle 直跑。
+- 禁止把中间文件写在仓库根或 `android\` / `memory-bank\` / `.clinerules\`（一律 `tmp\`）。
 - 禁止 `read all` 知识库、禁止扫全仓库：只读当前任务必需的文件（`.clineignore` 已挡构建产物）。
 - 禁止删知识库条目 / 改编号；禁止写 token、密钥、私密凭据。
 
