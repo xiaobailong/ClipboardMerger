@@ -4,10 +4,11 @@
 > 鸿蒙（HarmonyOS NEXT）用户：本 APK 在鸿蒙上**无法被识别成输入法**（卓易通容器里的 IME 注册不到系统），
 > 请看原生版本 [`harmony/README.md`](harmony/README.md)（HAP 输入法，功能 1:1 移植，已真机验证）。
 >
-> **鸿蒙原生版现状**（2026-10-07，真机 HLS-AL00 / API 26 实测）：
+> **鸿蒙原生版现状**（2026-10-08，真机 HLS-AL00 / API 26 实测）：
 > - 已实现：键盘面板五键 +「▼ 收起」+ 历史列表；键盘内 **⚙ 设置**（切换目标 / 键盘高度 / 键盘皮肤 / 键盘进程日志，全部键盘自持）；
 >   权限设置（剪贴板读取权限 / 输入法设置，已授权绿标 + 一键跳系统页）；GitHub 拉取/保存 + 「网络诊断」；
->   剪贴板历史跨进程一致（公共事件 `add`/`remove`/`clear`/`snapshot`）；日志（开关 + **清理日志** + 导出到 Download）。
+>   剪贴板历史跨进程一致（公共事件 `add`/`remove`/`clear`/`snapshot`）；日志（开关 + **清理日志** + 导出到 Download）；
+>   **IME 状态栏操作反馈**（粘贴/全部粘贴/清空/删除/切换均在底部状态栏实时显示结果，2.5 秒后自动恢复记录数）。
 > - **已移除的功能（平台不可实现，非缺陷）**：绑定App、通知提醒、后台保活（WorkScheduler 定时补活）、自启动/电池权限项 ——
 >   这些都依赖"检测前台应用"或"后台常驻"，而本版本对普通应用**不提供**这些能力，保留只会误导，故整体删除。
 > - **平台限制（实测）**：①输入法 Extension 跑在**独立沙箱**，读不到 App 的 `preferences` ⇒ 键盘相关设置只在键盘内 ⚙ 生效；
@@ -201,7 +202,7 @@ App 主界面标题栏显示当前版本号（如 `v1.29`），与 `version.prop
 | Android Gradle Plugin | 8.2.0 | 项目依赖 |
 | Kotlin | 1.9.20 | 项目依赖 |
 
-### 快速构建
+### 快速构建（Android）
 
 项目根目录提供了 `build.bat` 一键构建脚本：
 
@@ -218,6 +219,22 @@ build.bat setup
 # 清理构建产物
 build.bat clean
 ```
+
+### 快速构建（鸿蒙）
+
+```bash
+# 构建 HAP（不递增版本、不动 git）
+build-harmony.bat
+
+# 构建 + 递增版本 + git 提交/推送 + 打 tag + GitHub Release
+build-harmony.bat release
+
+# 清理鸿蒙构建产物
+build-harmony.bat clean
+```
+
+> 鸿蒙构建依赖 DevEco Studio（hvigor + HarmonyOS SDK），脚本会自动定位工具链路径。
+> 详细见 [`harmony/README.md`](harmony/README.md)。
 
 ### 手动构建
 
@@ -312,13 +329,15 @@ adb pull /sdcard/Download/JianJi/ .
 ```
 ClipboardMerger/
 ├── README.md                          # 本文件
-├── build.bat                          # 一键构建脚本（含 release 发布）
-├── clean.bat                          # 清理脚本
-├── version.properties                 # 版本号配置
-├── build.gradle.kts                   # 根项目构建配置
-├── settings.gradle.kts                # 项目设置
-├── gradle.properties                  # Gradle 属性
-├── app/
+├── build.bat                          # 一键构建脚本（Android，含 release 发布）
+├── build-harmony.bat                  # 一键构建脚本（鸿蒙，含 release 发布）
+├── clean.bat                          # 清理脚本（Android）
+├── version.properties                 # 版本号配置（Android）
+├── build.gradle.kts                   # 根项目构建配置（Android）
+├── settings.gradle.kts                # 项目设置（Android）
+├── gradle.properties                  # Gradle 属性（Android）
+├── app/                               # Android 工程
+├── harmony/                           # 鸿蒙工程（独立，不与 Gradle 关联）
 │   ├── build.gradle.kts               # App 模块构建配置
 │   ├── proguard-rules.pro             # 混淆规则
 │   └── src/main/

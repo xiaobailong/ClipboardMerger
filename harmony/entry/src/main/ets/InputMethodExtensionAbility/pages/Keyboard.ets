@@ -43,6 +43,8 @@ struct Keyboard {
   @State logFiles: string[] = [];
   /** 上次粘贴之后新增的条数（>0 就在键盘里显示「待粘贴」提醒条） */
   @State newCount: number = 0;
+  /** 操作状态反馈文字（显示在底部状态栏，优先级高于记录数） */
+  @State statusText: string = '';
 
   /** 按「键盘设置」里的比例算面板高度：面板尺寸跟随页面内容 ⇒ 必须撑根节点才看得出变化 */
   private computePanelHeight(): void {
@@ -104,10 +106,12 @@ struct Keyboard {
         return;
       }
       keyboardController.insertText(this.items[0].text);
+      this.setStatus('✅ 已粘贴最新记录');
       Logger.d('ime paste: latest item');
       return;
     }
     keyboardController.insertText(parts.join(SEP));
+    this.setStatus(`✅ 已粘贴 ${parts.length} 条`);
     this.selectedTexts = [];
     Logger.d(`ime paste: ${parts.length} selected items`);
   }
@@ -115,6 +119,7 @@ struct Keyboard {
   /** 「全部粘贴」：把全部记录按顺序合并插入 */
   private pasteAll(): void {
     if (this.items.length === 0) {
+      this.setStatus('📋 无剪贴记录');
       return;
     }
     const parts: string[] = [];
@@ -122,6 +127,7 @@ struct Keyboard {
       parts.push(this.items[i].text);
     }
     keyboardController.insertText(parts.join(SEP));
+    this.setStatus(`✅ 已粘贴 ${parts.length} 条`);
     this.selectedTexts = [];
     Logger.d(`ime pasteAll: ${parts.length} items`);
   }
@@ -142,6 +148,7 @@ struct Keyboard {
       this.selectedTexts = this.selectedTexts.slice();
     }
     this.toast('已删除 1 条（已同步 App）');
+    this.setStatus('已删除 1 条');
     Logger.d(`ime swipeDelete: idx=${idx}, total=${this.items.length}`);
   }
 
@@ -150,16 +157,19 @@ struct Keyboard {
     if (this.selectedTexts.length === 0) {
       if (this.items.length > 0) {
         ClipboardStore.removeAt(this.items.length - 1);
+        this.setStatus('已删除最后 1 条');
       }
       return;
     }
+    let count = 0;
     for (let i = this.items.length - 1; i >= 0; i--) {
       const it: ClipItem = this.items[i];
       if (this.selectedTexts.indexOf(it.text) >= 0) {
-        // 跨进程同步（App 侧也删这条）由 ClipboardStore 的变化回调统一广播
         ClipboardStore.removeAt(i);
+        count++;
       }
     }
+    this.setStatus(`已删除 ${count} 条`);
     this.selectedTexts = [];
   }
 
@@ -171,6 +181,7 @@ struct Keyboard {
   private switchIme(): void {
     const t = ImeSettings.getTarget();
     const b: string = t === undefined ? '' : t.bundle;
+    this.setStatus('切换输入法中…');
     keyboardController.switchIme(b, (msg: string) => {
       this.toast(msg);
     });
@@ -272,6 +283,7 @@ struct Keyboard {
     }
     keyboardController.insertText(this.items[0].text);
     ImeSettings.setLastPasteTs(Date.now());
+    this.setStatus('✅ 已粘贴最新记录');
     this.newCount = 0;
     EventBus.publish('paste', this.items[0].text, Date.now(), SRC_IME);
   }
@@ -300,6 +312,19 @@ struct Keyboard {
       this.getUIContext().getPromptAction().showToast({ message: msg, duration: 2500 });
     } catch (err) {
       Logger.w('toast failed');
+    }
+  }
+
+  /**
+   * 设置底部状态栏文字，2.5 秒后自动恢复为记录数。
+   * 空串 = 立即恢复为默认记录数。
+   */
+  private setStatus(text: string): void {
+    this.statusText = text;
+    if (text !== '') {
+      setTimeout(() => {
+        this.statusText = '';
+      }, 2500);
     }
   }
 
@@ -354,7 +379,9 @@ struct Keyboard {
         this.imeKey('删除', 3, () => {
           // 对齐 Android btnDelete：删的是**编辑框里**的文字（有选中整段删，否则退格 1 个字符）
           if (!keyboardController.deleteSelected()) {
-            this.toast('当前没有正在编辑的输入框');
+            this.setStatus('⚠ 当前没有正在编辑的输入框');
+          } else {
+            this.setStatus('已删除选中内容');
           }
         }, () => {
           // 长按保留原能力：删掉历史列表里勾选的记录
@@ -365,6 +392,7 @@ struct Keyboard {
           // 跨进程同步（App 侧也清空）由 ClipboardStore 的变化回调统一广播
           ClipboardStore.clear();
           this.selectedTexts = [];
+          this.setStatus('剪切板已清空');
         })
         this.imeKey('⚙', 3, () => {
           this.toggleSettings();
@@ -421,6 +449,7 @@ struct Keyboard {
               .borderRadius(8)
               .onClick(() => {
                 keyboardController.insertText(item.text);
+                this.setStatus('✅ 已粘贴');
               })
             }
             // 左滑删除这一条（对齐 App 主界面；键盘那份删完会同步给 App 进程）
@@ -551,7 +580,7 @@ struct Keyboard {
         .backgroundColor(this.p().imeItemBg)
       }
 
-      Text(this.items.length > 0 ? `📋 ${this.items.length} 条记录` : '📋 剪贴板监听中')
+      Text(this.statusText !== '' ? this.statusText : (this.items.length > 0 ? `📋 ${this.items.length} 条记录` : '📋 剪贴板监听中'))
         .fontSize(11)
         .fontColor(this.p().imeStatusFg)
         .width('100%')
