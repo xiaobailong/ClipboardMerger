@@ -186,7 +186,7 @@ App 内有两个 Tab 页：**「剪切板」** 和 **「GitHub」**，切换到 
 
 ### 版本标识
 
-App 主界面标题栏显示当前版本号（如 `v1.29`），与 `version.properties` 中的 `versionName` 一致。每次执行 `scripts\build.bat` 会自动递增 `versionCode`，方便区分不同构建版本。
+App 主界面标题栏显示当前版本号（如 `v1.29`），与 `android/version.properties` 中的 `versionName` 一致。每次执行 `scripts\build.bat` 会自动递增 `versionCode`，方便区分不同构建版本。
 
 ---
 
@@ -249,18 +249,18 @@ scripts\build-harmony.bat clean
 
 3. 构建 APK：
    ```bash
-   cd ClipboardMerger
-   gradlew assembleDebug
+   cd android
+   gradle assembleDebug
    ```
 
 4. APK 输出路径：
    ```
-   app\build\outputs\apk\debug\JianJi-v{version}-{code}.apk
+   android\app\build\outputs\apk\debug\JianJi-v{version}-{code}.apk
    ```
 
 ### 自定义构建环境路径
 
-编辑 `scripts\build.bat` 和 `gradle.properties`，修改以下变量：
+编辑 `scripts\build.bat` 和 `android/gradle.properties`，修改以下变量：
 - `JAVA_HOME` — JDK 安装路径
 - `ANDROID_HOME` — Android SDK 路径
 - `GH_EXE` — GitHub CLI (`gh.exe`) 绝对路径（默认 `C:\Program Files\GitHub CLI\gh.exe`）
@@ -268,10 +268,10 @@ scripts\build-harmony.bat clean
 
 ### 版本管理
 
-项目版本号通过 `version.properties` 管理：
+项目版本号通过 `android/version.properties` 管理：
 ```properties
-versionCode=27
-versionName=1.26
+versionCode=89
+versionName=1.88
 ```
 
 每次执行 `scripts\build.bat` 会自动递增 `versionCode`。
