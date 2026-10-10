@@ -494,6 +494,9 @@ Google 从 Android 10 开始严格限制后台应用读取剪贴板。本 App �
 
 ## 感谢
 
+> This is an optional voluntary donation to support project development.
+> Donation is NOT required to use this software and grants no commercial license.
+
 如果这个工具帮到了您，欢迎随意赞赏，无论多少都是对我最大的鼓励！
 
 ![赞助](img/pay.jpg)
