@@ -495,3 +495,5 @@ Google 从 Android 10 开始严格限制后台应用读取剪贴板。本 App �
 如果这个工具帮到了您，欢迎随意赞赏，无论多少都是对我最大的鼓励！
 
 ![赞助](img/pay.jpg)
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
