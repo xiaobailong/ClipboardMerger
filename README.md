@@ -1,3 +1,5 @@
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 # 剪集 (JianJi)
 
 一个 Android 剪贴板历史记录收集工具，通过注册系统输入法（IME）获取后台剪贴板监听权限，解决 Android 10+ 对普通应用后台读取剪贴板的限制。支持将收集到的内容通过 GitHub API 同步到远程仓库。
