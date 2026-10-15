@@ -1,6 +1,12 @@
 @echo off
 chcp 65001 > nul
 
+REM 先切到项目根目录（scripts 的上一级），避免日志写到 scripts\build\logs\
+cd /d "%~dp0.." 2>nul || (
+    echo [错误] 无法进入项目根目录
+    exit /b 1
+)
+
 REM ==== 日志初始化（tee 链路同 build-harmony.bat，见 ADR-010）====
 if not defined _CM_LOG_ACTIVE goto :init_log
 goto :skip_log
@@ -40,11 +46,6 @@ set "BUNDLE=com.example.clipboardmerger"
 set "ENTRY_ABILITY=EntryAbility"
 set "HAP_DEFAULT=%~dp0..\harmony\entry\build\default\outputs\default\entry-default-signed.hap"
 set "TMPDIR=%~dp0..\tmp"
-
-cd /d "%~dp0.." 2>nul || (
-    echo [错误] 无法进入脚本所在目录
-    exit /b 1
-)
 
 echo.
 echo ============================================

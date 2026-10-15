@@ -30,7 +30,7 @@ class SkinPalette(
     val bindFg: Int,
     val imeBg: Int,
     val imeBarBg: Int,
-    /** 输入法按钮底色，顺序固定：粘贴 / 全部粘贴 / 切换 / 删除 / 清空 / ⚙设置 / 隐藏 */
+    /** 输入法按钮底色，顺序固定：粘贴 / 全部粘贴 / 切换 / 删除 / 清空 / ▼隐藏 / ⚙设置 */
     val imeKeyColors: List<Int>,
     val imeKeyFg: Int,
     val imeItemBg: Int,
@@ -94,7 +94,7 @@ val ANDROID_SKIN: SkinPalette = SkinPalette(
     imeBarBg = 0xFF1B5E20.toInt(),
     imeKeyColors = listOf(
         0xFF388E3C.toInt(), 0xFFFF9800.toInt(), 0xFF2E7D32.toInt(), 0xFFD32F2F.toInt(),
-        0xFFB00020.toInt(), 0xFF37474F.toInt(), 0xFF455A64.toInt()
+        0xFFB00020.toInt(), 0xFF455A64.toInt(), 0xFF37474F.toInt()
     ),
     imeKeyFg = 0xFFFFFFFF.toInt(),
     imeItemBg = 0xFF1A3A1A.toInt(),

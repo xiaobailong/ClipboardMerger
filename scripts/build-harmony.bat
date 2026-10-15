@@ -1,6 +1,12 @@
 @echo off
 chcp 65001 > nul
 
+REM 先切到项目根目录（scripts 的上一级），避免日志写到 scripts\build\logs\
+cd /d "%~dp0.." 2>nul || (
+    echo [错误] 无法进入项目根目录
+    exit /b 1
+)
+
 REM ==== 日志初始化（tee 链路同 build.bat，见 ADR-010）====
 if not defined _CM_LOG_ACTIVE goto :init_log
 goto :skip_log
@@ -52,12 +58,6 @@ set "GH_REPO=xiaobailong/ClipboardMerger"
 set "HARMONY_DIR=%~dp0..\harmony"
 set "HAP_OUT=%~dp0..\build\harmony"
 set "VER_TOOL=%~dp0tools\harmony-version.js"
-
-cd /d "%~dp0.." 2>nul || (
-    echo [错误] 无法进入脚本所在目录
-    pause
-    exit /b 1
-)
 
 if not exist "%HARMONY_DIR%\entry" (
     echo [错误] 找不到 harmony\entry —— 本脚本必须在仓库根运行

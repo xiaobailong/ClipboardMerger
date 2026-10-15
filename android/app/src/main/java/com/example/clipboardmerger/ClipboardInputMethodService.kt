@@ -1,6 +1,5 @@
 package com.example.clipboardmerger
 
-import android.app.AlertDialog
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.ClipData
@@ -15,11 +14,12 @@ import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -33,6 +33,13 @@ class ClipboardInputMethodService : InputMethodService() {
     private var imeAdapter: ImeClipboardAdapter? = null
     /** 面板根 view：切皮肤 / 每次显示时按皮肤重新上色（onCreateInputView 只会在面板首次创建时调用） */
     private var imeRootView: View? = null
+    /** 面板内的「⚙ 键盘设置」：与历史列表互斥显示（点 ⚙ 切换，列表被隐藏） */
+    private var settingsView: ScrollView? = null
+    private var tvSkinSection: TextView? = null
+    private var tvMarkHarmony: TextView? = null
+    private var tvMarkAndroid: TextView? = null
+    /** 设置面板当前是否展开（展开时历史列表隐藏） */
+    private var settingsShown = false
 
     private val clipboardUpdateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -83,8 +90,8 @@ class ClipboardInputMethodService : InputMethodService() {
             .sortedByDescending { it.timestamp }
         Logger.d("IMEService.refreshClipboardList: loaded ${items.size} items")
         imeAdapter?.submitList(items)
-        val count = items.size
-        tvStatus?.text = if (count > 0) "📋 $count 条记录" else "📋 剪贴板监听"
+        // 设置面板展开时别覆盖设置标题（状态条还要给 ⚙ 里切皮肤做回显）
+        if (!settingsShown) updateIdleStatus()
     }
 
     override fun onCreate() {
@@ -127,11 +134,19 @@ class ClipboardInputMethodService : InputMethodService() {
         val btnHideIme = view.findViewById<Button>(R.id.btnHideIme)
         tvStatus = view.findViewById<TextView>(R.id.tvImeStatus)
         rvClipboard = view.findViewById<RecyclerView>(R.id.rvImeClipboard)
-        // 框架 addView 强制 WRAP_CONTENT 覆盖根 view.layoutParams，但 rv 在 LinearLayout 内部的 layoutParams 不受影响；
-        // 直接设 rv 高度 = maxHeight - 按钮栏 - 状态栏预留，不再依赖 weight（weight 在 WRAP_CONTENT 下行为不可控）
+        settingsView = view.findViewById(R.id.scrollImeSettings)
+        tvSkinSection = view.findViewById(R.id.tvSkinSection)
+        tvMarkHarmony = view.findViewById(R.id.tvMarkHarmony)
+        tvMarkAndroid = view.findViewById(R.id.tvMarkAndroid)
+        // 面板 view 是新 inflate 的 ⇒ 状态回到「显示历史列表」
+        settingsShown = false
+        val contentArea = view.findViewById<FrameLayout>(R.id.contentArea)
+        // 框架 addView 强制 WRAP_CONTENT 覆盖根 view.layoutParams，但内容区在根 LinearLayout 内部的 layoutParams 不受影响；
+        // 直接设内容区高度 = maxHeight - 按钮栏 - 状态栏预留，不再依赖 weight（weight 在 WRAP_CONTENT 下不可控）。
+        // 历史列表与设置面板共用这个容器 ⇒ 来回切换时面板高度不跳
         val rvHeight = (maxHeight - reservedPx).coerceAtLeast(0)
-        rvClipboard?.layoutParams?.height = rvHeight
-        Logger.d("IMEService.onCreateInputView: rvHeight=$rvHeight, rvLpHeight=${rvClipboard?.layoutParams?.height}")
+        contentArea?.layoutParams?.height = rvHeight
+        Logger.d("IMEService.onCreateInputView: rvHeight=$rvHeight, contentLpHeight=${contentArea?.layoutParams?.height}")
 
         // 延迟记录布局后的实际高度（用于诊断漂移/高度问题）
         view.post {
@@ -262,13 +277,27 @@ class ClipboardInputMethodService : InputMethodService() {
             true
         }
 
-        // 「⚙」齿轮按钮 → 「键盘设置」菜单（皮肤在这个菜单里切，App 侧共用同一份设置，见 SkinStore）
+        // 「⚙」：在**面板内**展开/收起「键盘设置」（展开时历史列表隐藏，对齐鸿蒙版键盘的 ⚙ 设置）
         btnSettings.setOnClickListener {
-            Logger.d("IMEService: gear button clicked, current skin=${SkinStore.get(this)}")
-            showSettingsMenu()
+            Logger.d("IMEService: gear button clicked, settingsShown=$settingsShown")
+            toggleSettings()
         }
 
-        // 「隐藏」：收起面板（requestHideSelf 是 IME 侧收起软键盘的官方入口，不需要窗口 token）
+        // 设置面板里的「皮肤设置」：两行单选（◉ = 当前皮肤），点一行立即切换并给面板重新上色
+        view.findViewById<View>(R.id.rowSkinHarmony)?.setOnClickListener {
+            Logger.d("IMEService: skin row clicked -> $SKIN_HARMONY")
+            setSkin(SKIN_HARMONY)
+        }
+        view.findViewById<View>(R.id.rowSkinAndroid)?.setOnClickListener {
+            Logger.d("IMEService: skin row clicked -> $SKIN_ANDROID")
+            setSkin(SKIN_ANDROID)
+        }
+        view.findViewById<Button>(R.id.btnSettingsBack)?.setOnClickListener {
+            Logger.d("IMEService: settings back clicked")
+            toggleSettings()
+        }
+
+        // 「▼」：收起键盘面板（requestHideSelf 是 IME 侧收起软键盘的官方入口，不需要窗口 token）
         btnHideIme.setOnClickListener {
             Logger.d("IMEService: hide button clicked, requestHideSelf")
             try {
@@ -300,16 +329,31 @@ class ClipboardInputMethodService : InputMethodService() {
         tvStatus?.setBackgroundColor(p.imeStatusBg)
         tvStatus?.setTextColor(p.imeStatusFg)
 
-        // 按钮底色顺序与 SkinPalette.imeKeyColors 一致：粘贴/全部粘贴/切换/删除/清空/⚙设置/隐藏
+        // 按钮底色顺序与 SkinPalette.imeKeyColors 一致：粘贴/全部粘贴/切换/删除/清空/▼隐藏/⚙设置
+        // （▼ 比 ⚙ 常用 ⇒ 放前面；⚙ 最少用，压在最右，窄屏要横滑时也是它先被挤出去）
         val buttonIds = listOf(
             R.id.btnPasteLast, R.id.btnPasteAll, R.id.btnSwitchBack,
-            R.id.btnDelete, R.id.btnClearClipboard, R.id.btnSettings, R.id.btnHideIme
+            R.id.btnDelete, R.id.btnClearClipboard, R.id.btnHideIme, R.id.btnSettings
         )
         for ((index, id) in buttonIds.withIndex()) {
             val button = view.findViewById<Button>(id) ?: continue
             button.setBackgroundColor(p.imeKeyColors.getOrElse(index) { p.imeKeyColors.last() })
             button.setTextColor(p.imeKeyFg)
         }
+
+        // 设置面板（⚙ 展开的那一屏）：底色 / 小标题 / 「皮肤设置」回显 / 两套皮肤单选行 / 返回按钮
+        settingsView?.setBackgroundColor(p.imeItemBg)
+        view.findViewById<TextView>(R.id.tvSettingsTitle)?.setTextColor(p.imeStatusFg)
+        tvSkinSection?.setTextColor(p.imeStatusFg)
+        tvMarkHarmony?.setTextColor(p.imeMark)
+        tvMarkAndroid?.setTextColor(p.imeMark)
+        view.findViewById<TextView>(R.id.tvNameHarmony)?.setTextColor(p.imeItemFg)
+        view.findViewById<TextView>(R.id.tvNameAndroid)?.setTextColor(p.imeItemFg)
+        view.findViewById<Button>(R.id.btnSettingsBack)?.let { back ->
+            back.setBackgroundColor(p.imeKeyColors.last())
+            back.setTextColor(p.imeKeyFg)
+        }
+        updateSkinRows()
 
         imeAdapter?.let { adapter ->
             adapter.palette = p
@@ -318,77 +362,34 @@ class ClipboardInputMethodService : InputMethodService() {
     }
 
     /**
-     * 面板内「⚙」按钮：弹出「键盘设置」菜单（对齐鸿蒙版键盘的 ⚙ 设置）。
-     *
-     * 皮肤只是菜单里的一项 —— 齿轮只做入口，选项在 [showSkinDialog] 里；以后键盘自己的设置
-     * （切换目标 / 面板高度之类）往这里加一项即可，不要再往按钮栏塞独立按钮。
+     * 「⚙」切换设置面板：展开时**隐藏历史列表**、只显示设置项（对齐鸿蒙版键盘的 ⚙ 设置）；
+     * 状态条同步当前模式。历史列表与设置面板互斥 ⇒ 面板高度不变（同 `PIT-042` 的思路）。
      */
-    private fun showSettingsMenu() {
-        val current = SkinStore.displayName(this, SkinStore.get(this))
-        val items = arrayOf(getString(R.string.ime_menu_skin, current))
-        Logger.d("IMEService.showSettingsMenu: opened, current skin=${SkinStore.get(this)}")
-        try {
-            val dialog = AlertDialog.Builder(this)
-                .setTitle(R.string.ime_menu_title)
-                .setItems(items) { _, which ->
-                    Logger.d("IMEService.showSettingsMenu: clicked item=$which")
-                    if (which == 0) showSkinDialog()
-                }
-                .setNegativeButton(android.R.string.cancel, null)
-                .create()
-            attachImeWindow(dialog)
-            dialog.show()
-        } catch (e: Exception) {
-            Logger.w("IMEService.showSettingsMenu failed: ${e.message}, fallback=直接开皮肤弹框")
-            showSkinDialog()
+    private fun toggleSettings() {
+        settingsShown = !settingsShown
+        settingsView?.visibility = if (settingsShown) View.VISIBLE else View.GONE
+        rvClipboard?.visibility = if (settingsShown) View.GONE else View.VISIBLE
+        if (settingsShown) {
+            tvStatus?.text = getString(R.string.ime_status_settings)
+        } else {
+            updateIdleStatus()
         }
+        Logger.d("IMEService.toggleSettings: settingsShown=$settingsShown")
     }
 
-    /**
-     * 输入法内的弹框必须依附输入法窗口：窗口类型 TYPE_APPLICATION_ATTACHED_DIALOG + 输入法窗口 token，
-     * 否则 WMS 会丢 BadTokenException（App 侧 Activity 的 AlertDialog 不需要这一步）。
-     */
-    private fun attachImeWindow(dialog: AlertDialog) {
-        val imeToken = window.window?.attributes?.token
-        Logger.d("IMEService.attachImeWindow: imeToken=${imeToken != null}")
-        dialog.window?.let { w ->
-            w.setType(WindowManager.LayoutParams.TYPE_APPLICATION_ATTACHED_DIALOG)
-            if (imeToken != null) {
-                val lp = w.attributes
-                lp.token = imeToken
-                w.attributes = lp
-            }
-        }
+    /** 状态条空闲文案（条数 / 监听中）；设置面板展开时不覆盖设置标题 */
+    private fun updateIdleStatus() {
+        val count = imeAdapter?.itemCount ?: 0
+        tvStatus?.text = if (count > 0) "📋 $count 条记录" else "📋 剪贴板监听"
     }
 
-    /**
-     * 「键盘设置 → 皮肤」弹框（对齐鸿蒙版键盘 ⚙ 里的「键盘皮肤」）。
-     *
-     * 弹框依附输入法窗口（见 [attachImeWindow]）；个别系统/机型仍可能拒绝 ⇒ catch 后兜底成
-     * 「直接切到另一套」，保证入口任何时候都有效果（不崩、不静默）。
-     */
-    private fun showSkinDialog() {
-        val ids = arrayOf(SKIN_HARMONY, SKIN_ANDROID)
-        val labels = arrayOf(getString(R.string.skin_harmony), getString(R.string.skin_android))
-        val currentId = SkinStore.get(this)
-        val checked = ids.indexOf(currentId).coerceAtLeast(0)
-        try {
-            val dialog = AlertDialog.Builder(this)
-                .setTitle(R.string.skin_title)
-                .setSingleChoiceItems(labels, checked) { d, which ->
-                    setSkin(ids[which])
-                    d.dismiss()
-                }
-                .setNegativeButton(android.R.string.cancel, null)
-                .create()
-
-            attachImeWindow(dialog)
-            dialog.show()
-            Logger.d("IMEService.showSkinDialog: shown, current=$currentId, checked=$checked")
-        } catch (e: Exception) {
-            Logger.w("IMEService.showSkinDialog failed: ${e.message}, fallback=直接切换")
-            setSkin(if (currentId == SKIN_ANDROID) SKIN_HARMONY else SKIN_ANDROID)
-        }
+    /** 设置面板里「皮肤设置」的回显：◉ = 当前皮肤（与鸿蒙版键盘皮肤行的 ◉/○ 一致） */
+    private fun updateSkinRows() {
+        val id = SkinStore.get(this)
+        tvSkinSection?.text =
+            getString(R.string.ime_settings_skin_section, SkinStore.displayName(this, id))
+        tvMarkHarmony?.text = if (id == SKIN_ANDROID) "○" else "◉"
+        tvMarkAndroid?.text = if (id == SKIN_ANDROID) "◉" else "○"
     }
 
     /** 切换皮肤：持久化 → 立即给当前面板上色 → 状态条回显（App 侧下次进前台也是新皮肤） */
@@ -522,14 +523,27 @@ class ClipboardInputMethodService : InputMethodService() {
     private fun switchToNextIme(imm: InputMethodManager) {
         val imeToken = window.window?.attributes?.token
         Logger.d("IMEService.switchToNextIme: imeToken=${imeToken != null}")
+        // API 28+：用 InputMethodService 自己的入口（不需要 ibinder token，也不废弃）；
+        // API 26/27 没有这个重载，只能走 InputMethodManager 那个已废弃的（靠 token）。
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            try {
+                switchToNextInputMethod(false)
+                Logger.d("IMEService.switchToNextIme: switchToNextInputMethod(service) called")
+            } catch (e: Exception) {
+                Logger.e("IMEService.switchToNextIme: failed: ${e.message}", e)
+                imm.showInputMethodPicker()
+            }
+            return
+        }
         if (imeToken == null) {
             Logger.w("IMEService.switchToNextIme: imeToken is null, showing picker")
             imm.showInputMethodPicker()
             return
         }
         try {
+            @Suppress("DEPRECATION")
             imm.switchToNextInputMethod(imeToken, false)
-            Logger.d("IMEService.switchToNextIme: switchToNextInputMethod called")
+            Logger.d("IMEService.switchToNextIme: switchToNextInputMethod(manager) called")
         } catch (e: Exception) {
             Logger.e("IMEService.switchToNextIme: failed: ${e.message}", e)
             imm.showInputMethodPicker()

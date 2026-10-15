@@ -60,7 +60,9 @@
 | 鸿蒙版：App 侧历史成片重复（快照合并用循环 `addText`，只挡最新一条） | `ISSUE-012` | I |
 | 公共事件是广播：自己发的事件本进程也收 ⇒ 事件必须带 `src` 过滤 | `PIT-050` | P |
 | 去掉 App 内输入法切换入口/弹框（状态条改只读） | `ADR-015`、`ISSUE-008` | D + I |
-| Android 版皮肤切换入口（App ⋮→皮肤 / 键盘 ⚙→皮肤）、键盘「隐藏」按钮 | `ADR-017` | D |
+| Android 版皮肤切换（App ⋮→皮肤 / 键盘 ⚙→面板内「皮肤设置」单选）、键盘 ▼ 收起 | `ADR-017` | D |
+| 编辑器改了文件却没生效 / Edit 报 no+multiple match（IDE 正在 `pull --rebase`） | `PIT-052` | P |
+| 编译警告清理（`adapterPosition` / IME 切换 / `MOVE_TO_FOREGROUND` / `optString(name,null)`） | `PIT-053` | P |
 | 浅色皮肤下复用白色图标 ⇒ 顶栏「⋮」隐形 / 勾选框颜色不搭 | `PIT-051` | P |
 
 

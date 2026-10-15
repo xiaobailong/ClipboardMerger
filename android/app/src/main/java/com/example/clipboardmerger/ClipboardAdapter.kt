@@ -55,7 +55,8 @@ class ClipboardAdapter(
 
         init {
             binding.checkBox.setOnCheckedChangeListener { _, _ ->
-                val pos = adapterPosition
+                // bindingAdapterPosition（adapterPosition 在 RecyclerView 1.3 起废弃）
+                val pos = bindingAdapterPosition
                 if (pos != RecyclerView.NO_POSITION) {
                     Logger.d("ClipboardAdapter.ViewHolder: checkbox toggled at position=$pos")
                     onToggleSelection(pos)
@@ -76,7 +77,7 @@ class ClipboardAdapter(
             binding.checkBox.setOnCheckedChangeListener(null)
             binding.checkBox.isChecked = item.isSelected
             binding.checkBox.setOnCheckedChangeListener { _, _ ->
-                val pos = adapterPosition
+                val pos = bindingAdapterPosition
                 if (pos != RecyclerView.NO_POSITION) {
                     Logger.d("ClipboardAdapter.bind: checkbox toggled at position=$pos")
                     onToggleSelection(pos)

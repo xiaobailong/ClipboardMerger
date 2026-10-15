@@ -113,7 +113,8 @@ class GitHubHelper(private val context: Context) {
                 Logger.d("GitHubHelper.saveFile: connecting to get SHA...")
                 if (getConn.responseCode == 200) {
                     val getResponse = getConn.inputStream.bufferedReader().readText()
-                    sha = JSONObject(getResponse).optString("sha", null)
+                    // 用 optString 的默认重载 + takeIf：既拿到「没有 sha ⇒ null」的原语义，又不给平台类型的第二参传 null（会被推断成 Nothing?/String? 触发类型告警）
+                    sha = JSONObject(getResponse).optString("sha").takeIf { it.isNotBlank() }
                 }
             } catch (e: Exception) {
                 Logger.w("GitHubHelper.saveFile: failed to get SHA: ${e.message}")

@@ -369,3 +369,25 @@
 - 自检: 切到鸿蒙风 → 顶栏右侧「⋮」应为深色 `#1C1C1E`；切回 Android 原版 → 回到白色；日志有 `applySkin: harmony` / `applySkin: android` 对应行。
 - 首次记录: 2026-10-15（编译 `BUILD SUCCESSFUL`；真机观感待复验）
 
+
+## PIT-052 IDE 同步（`pull --rebase`）期间工作区文件会被临时换成 HEAD 内容 ⇒ 此刻读/写拿到旧版
+- 触发条件: 本地有未提交改动时在 VS Code 里点同步 / pull（它会先 `git stash` → pull → `stash pop`），窗口内工作区文件短暂变回远端版本。
+- 现象: 同一分钟内 `Read` 到的 `android/app/src/main/res/layout/ime_view.xml` 是 **HEAD 内容**（112 行、按钮栏没有 ⚙/▼、`git diff --stat` 空），紧接着 `git diff --stat` 又显示该文件 +226 行；同一批 Edit 里还会莫名报 `No replacement performed: multiple occurrences of text found`（旧版里 `android:paddingHorizontal="6dp"` 出现 4 次，新版只 1 次）。
+- 正确做法: ①动文件前先 `git --no-pager status --short` + `git --no-pager reflog -3`，看到 `pull --rebase` 就等它 `(finish)` 再改；②每次 Edit 后用 `git diff --stat -- <file>`（或再 Read 一次）复核改动**确实在文件里**，别只信 Edit 的成功回执；③确认稳定后**幂等重试**刚才的 Edit 即可。
+- 反例: 把「Edit 报 multiple/no match」当成自己 old_text 写错，于是改去重写整文件 / 批量替换 —— 真因是文件此刻是另一个版本，容易把别人的改动覆盖掉（`PIT-003`、`PIT-014`）。
+- 自检: `git reflog -3` 末尾为 `pull --rebase ... (finish)`，且 Edit 回执的行号与 `Read` 的行号一致；`git status --short` 里自己的文件仍是 `M`/`??`。
+- 首次记录: 2026-10-15
+
+
+## PIT-053 Android 编译警告清零：`adapterPosition` / IME 切换 / `MOVE_TO_FOREGROUND` 都有等价替代；`optString(name, null)` 会报类型告警
+- 触发条件: `gradle assembleDebug` 里一堆 `w:`：`adapterPosition`（5 处）、`InputMethodManager.switchToNextInputMethod`、`UsageEvents.Event.MOVE_TO_FOREGROUND`、`JSONObject.optString("sha", null)`、两处 `Variable 'dialog' is never used`。
+- 现象与替代（本机 `platforms/android-34` + recyclerview 1.3.1 已验）:
+  ①`RecyclerView.ViewHolder.adapterPosition` → **`bindingAdapterPosition`**（`ClipboardAdapter` ×2 / `ImeClipboardAdapter` ×2 / `MainActivity.onSwiped`；行为差异：被移除的 holder 返回 `NO_POSITION`，与原来的 `NO_POSITION` 判断天然兼容）；
+  ②`InputMethodManager.switchToNextInputMethod(IBinder, boolean)`（API 28 起废弃）→ **`InputMethodService.switchToNextInputMethod(boolean)`**，但这个是 **API 28 才有**、而本项目 minSdk 26 ⇒ 必须写 `if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) { switchToNextInputMethod(false) } else { @Suppress("DEPRECATION") imm.switchToNextInputMethod(token, false) }`。查证方法：`javap -classpath %ANDROID_HOME%\platforms\android-34\android.jar android.inputmethodservice.InputMethodService | findstr switchTo`；
+  ③`UsageEvents.Event.MOVE_TO_FOREGROUND` → **`ACTIVITY_RESUMED`**：两者常量值都是 `1`（低版本系统上报的就是它）⇒ 直接换名，**不需要**版本判断；
+  ④`JSONObject.optString(name, null)`：第二参在 Kotlin 侧是平台类型，传 `null` 会依次报 `inferred type is Nothing?` / `String?` ⇒ 改成 `optString(name).takeIf { it.isNotBlank() }`（保住「没有该字段 ⇒ null」的原语义）；`optString(name, "")` 会把 `null` 变成 `""`，别用；
+  ⑤`val dialog = AlertDialog.Builder(...).show()`：`show()` 已交还对象却赋值给没人用的变量 ⇒ 去掉 `val dialog = `。
+- 反例: 一律 `@Suppress("DEPRECATION")` 盖住（①③有干净替代，盖住只是把可还的债留着）；把 `optString` 的兜底改成 `""`（PUT 会带上空的 `sha`，语义变了）。
+- 自检: 重跑 `assembleDebug`，`Select-String -Path <日志> -Pattern '^w: '` 无输出（只剩 javac 的「源值 8 已过时」3 条，与本工程无关）。
+- 首次记录: 2026-10-15（21:23 构建：Kotlin 警告 0 条，`BUILD SUCCESSFUL`）
+

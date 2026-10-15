@@ -21,7 +21,7 @@
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingHorizontal="6dp"
+            android:paddingHorizontal="4dp"
             android:paddingVertical="3dp">
 
             <Button
@@ -95,20 +95,6 @@
                 android:textSize="11sp" />
 
             <Button
-                android:id="@+id/btnSettings"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="3dp"
-                android:background="#FF37474F"
-                android:minHeight="0dp"
-                android:minWidth="0dp"
-                android:paddingHorizontal="6dp"
-                android:paddingVertical="2dp"
-                android:text="⚙"
-                android:textColor="#FFFFFF"
-                android:textSize="13sp" />
-
-            <Button
                 android:id="@+id/btnHideIme"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -119,6 +105,20 @@
                 android:paddingHorizontal="6dp"
                 android:paddingVertical="2dp"
                 android:text="▼"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/btnSettings"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="3dp"
+                android:background="#FF37474F"
+                android:minHeight="0dp"
+                android:minWidth="0dp"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="2dp"
+                android:text="⚙"
                 android:textColor="#FFFFFF"
                 android:textSize="13sp" />
 

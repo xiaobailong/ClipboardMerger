@@ -1,6 +1,13 @@
 @echo off
 chcp 65001 > nul
 
+REM 先切到项目根目录（scripts 的上一级），避免日志写到 scripts\build\logs\
+cd /d "%~dp0.." 2>nul || (
+    echo [错误] 无法进入项目根目录
+    pause
+    exit /b 1
+)
+
 REM ==== 日志初始化 ====
 if not defined _CM_LOG_ACTIVE goto :init_log
 goto :skip_log
@@ -53,13 +60,7 @@ set "ANDROID_SDK_ROOT=D:\Tools\DevTools\Android\Sdk"
 set "PATH=D:\Tools\DevTools\Java\JDK\jdk-21.0.10-oracle\bin;D:\Tools\DevTools\gradle\gradle-8.5\bin;%PATH%"
 set "GH_EXE=C:\Program Files\GitHub CLI\gh.exe"
 set "GH_REPO=xiaobailong/ClipboardMerger"
-set "JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8"
-
-cd /d d:\WorkSpace\test\ClipboardMerger 2>nul || (
-    echo [错误] 项目目录不存在
-    pause
-    exit /b 1
-)
+set "JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8"
 
 if not exist "build" mkdir "build"
 

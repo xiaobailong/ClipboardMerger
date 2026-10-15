@@ -74,7 +74,8 @@ class ImeClipboardAdapter(var palette: SkinPalette) : RecyclerView.Adapter<ImeCl
 
         init {
             checkBox.setOnCheckedChangeListener { _, _ ->
-                val pos = adapterPosition
+                // bindingAdapterPosition（adapterPosition 在 RecyclerView 1.3 起废弃）
+                val pos = bindingAdapterPosition
                 if (pos != RecyclerView.NO_POSITION) {
                     toggleSelection(pos)
                 }
@@ -95,7 +96,7 @@ class ImeClipboardAdapter(var palette: SkinPalette) : RecyclerView.Adapter<ImeCl
             checkBox.setOnCheckedChangeListener(null)
             checkBox.isChecked = item.isSelected
             checkBox.setOnCheckedChangeListener { _, _ ->
-                val pos = adapterPosition
+                val pos = bindingAdapterPosition
                 if (pos != RecyclerView.NO_POSITION) {
                     toggleSelection(pos)
                 }

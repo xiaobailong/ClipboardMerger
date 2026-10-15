@@ -257,7 +257,7 @@ class MainActivity : AppCompatActivity() {
             ): Boolean = false
 
             override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
-                val position = viewHolder.adapterPosition
+                val position = viewHolder.bindingAdapterPosition
                 if (position != RecyclerView.NO_POSITION) {
                     Logger.d("ItemTouchHelper.onSwiped: position=$position")
                     deleteItemAt(position)
@@ -963,7 +963,7 @@ class MainActivity : AppCompatActivity() {
         listView.setItemChecked(savedIndex, true)
         listView.setSelection(savedIndex)
 
-        val dialog = AlertDialog.Builder(this)
+        AlertDialog.Builder(this)
             .setTitle(R.string.ime_settings_title)
             .setView(dialogView)
             .setPositiveButton(android.R.string.ok) { _, _ ->
@@ -1115,7 +1115,7 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        val dialog = AlertDialog.Builder(this)
+        AlertDialog.Builder(this)
             .setTitle(R.string.bind_app_title)
             .setView(dialogView)
             .setPositiveButton(android.R.string.ok) { _, _ ->

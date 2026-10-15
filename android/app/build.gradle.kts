@@ -56,12 +56,14 @@ android {
             )
         }
     }
+    // Java 8 在 JDK 21 上已标记过时（javac 警告「源值 8 已过时」）⇒ 升到 11。
+    // Java / Kotlin 的 JVM 目标必须一致，否则 AGP 8 报 "Inconsistent JVM-target compatibility"。
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
     }
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = "11"
     }
     buildFeatures {
         viewBinding = true

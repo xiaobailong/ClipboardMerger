@@ -420,7 +420,8 @@ class ClipboardService : Service() {
             val event = UsageEvents.Event()
             while (events.hasNextEvent()) {
                 events.getNextEvent(event)
-                if (event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND) {
+                // ACTIVITY_RESUMED（API 29+）与已废弃的 MOVE_TO_FOREGROUND 常量值相同（=1）⇒ 换个名字即可，低版本系统上报的同样是它
+                if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED) {
                     if (event.timeStamp > lastTime) {
                         lastTime = event.timeStamp
                         lastPackage = event.packageName
