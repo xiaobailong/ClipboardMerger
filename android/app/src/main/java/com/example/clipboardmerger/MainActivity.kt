@@ -12,6 +12,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.graphics.Canvas
 import android.net.Uri
 import android.os.Build
@@ -135,6 +136,7 @@ class MainActivity : AppCompatActivity() {
         readCurrentClipboard()
         setupTabs()
         setupGitHubButtons()
+        applySkin()
         Logger.d("========== onCreate finished ==========")
     }
 
@@ -231,6 +233,7 @@ class MainActivity : AppCompatActivity() {
     private fun setupRecyclerView() {
         Logger.d("setupRecyclerView")
         adapter = ClipboardAdapter(
+            palette = SkinStore.palette(this),
             onToggleSelection = { position -> viewModel.toggleSelection(position) },
             onDelete = { position -> deleteItemAt(position) }
         )
@@ -408,14 +411,16 @@ class MainActivity : AppCompatActivity() {
     private fun setupIMEStatus() {
         val isDefault = isInputMethodDefault()
         Logger.d("setupIMEStatus: isDefault=$isDefault")
+        // 状态条配色跟皮肤走（原来硬编码 0xFFE8F5E9 / 0xFFFFF3E0，切皮肤后不跟着变）
+        val p = SkinStore.palette(this)
         if (isDefault) {
             binding.tvAccessibilityStatus.text = getString(R.string.ime_status_active)
-            binding.tvAccessibilityStatus.setBackgroundColor(0xFFE8F5E9.toInt())
-            binding.tvAccessibilityStatus.setTextColor(0xFF2E7D32.toInt())
+            binding.tvAccessibilityStatus.setBackgroundColor(p.statusOnBg)
+            binding.tvAccessibilityStatus.setTextColor(p.statusOnFg)
         } else {
             binding.tvAccessibilityStatus.text = getString(R.string.ime_status_disabled)
-            binding.tvAccessibilityStatus.setBackgroundColor(0xFFFFF3E0.toInt())
-            binding.tvAccessibilityStatus.setTextColor(0xFFE65100.toInt())
+            binding.tvAccessibilityStatus.setBackgroundColor(p.statusOffBg)
+            binding.tvAccessibilityStatus.setTextColor(p.statusOffFg)
         }
         binding.tvAccessibilityStatus.visibility = View.VISIBLE
         binding.tvAccessibilityStatus.setOnClickListener {
@@ -577,6 +582,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.toolbar_menu, menu)
+        // 「⋮」图标配置期是白色（配紫色顶栏）；鸿蒙风是白底栏 ⇒ 这里按皮肤文字色染色。
+        // 菜单可能在 applySkin() 之后才创建（invalidateOptionsMenu 会重走本方法），两处都要设。
+        menu.findItem(R.id.action_settings)?.icon?.mutate()?.setTintList(
+            ColorStateList.valueOf(SkinStore.palette(this).barText)
+        )
         return true
     }
 
@@ -596,10 +606,17 @@ class MainActivity : AppCompatActivity() {
         val anchor = binding.toolbar.findViewById<View>(R.id.action_settings) ?: binding.toolbar
         val popup = PopupMenu(this, anchor)
         popup.menuInflater.inflate(R.menu.settings_menu, popup.menu)
+        // 菜单项直接带上当前皮肤名，省得进弹框才知道现在是哪套
+        popup.menu.findItem(R.id.action_skin)?.title =
+            getString(R.string.settings_skin) + "：" + SkinStore.displayName(this, SkinStore.get(this))
         popup.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 R.id.action_log_settings -> {
                     showLogSettingsDialog()
+                    true
+                }
+                R.id.action_skin -> {
+                    showSkinDialog()
                     true
                 }
                 R.id.action_ime_settings -> {
@@ -630,6 +647,89 @@ class MainActivity : AppCompatActivity() {
             }
         }
         popup.show()
+    }
+
+    /**
+     * 把当前皮肤应用到主界面（工具栏 / 标签页 / 页面底色 / 状态条 / 列表 / 按钮）。
+     * 配色一律从 [SkinStore] 取，别在别处硬编码：切皮肤走 [showSkinDialog] → recreate()，
+     * 这里会跟着新皮肤再跑一遍；输入法面板那边见 ClipboardInputMethodService.applySkin()。
+     */
+    private fun applySkin() {
+        val p = SkinStore.palette(this)
+        Logger.d("applySkin: ${SkinStore.get(this)}")
+
+        // 页面底色
+        binding.root.setBackgroundColor(p.pageBg)
+        binding.layoutClipboard.setBackgroundColor(p.pageBg)
+        binding.recyclerView.setBackgroundColor(p.pageBg)
+        binding.tvEmpty.setTextColor(p.textSecondary)
+
+        // 顶栏 + 标签页
+        binding.toolbar.setBackgroundColor(p.barBg)
+        binding.toolbar.setTitleTextColor(p.barText)
+        binding.toolbar.setSubtitleTextColor(p.barTextDim)
+        // 「⋮」设置按钮：图标原图是白色（当年配紫色顶栏），鸿蒙风是白底栏 ⇒ 白色图标等于隐形，
+        // 这里按皮肤文字色给菜单图标染色（mutate 避免污染 drawable 的共享状态）
+        binding.toolbar.menu.findItem(R.id.action_settings)?.icon?.let { icon ->
+            icon.mutate().setTintList(ColorStateList.valueOf(p.barText))
+        }
+        binding.tabLayout.setBackgroundColor(p.barBg)
+        binding.tabLayout.setSelectedTabIndicatorColor(p.tabIndicator)
+        binding.tabLayout.setTabTextColors(p.barTextDim, p.barText)
+
+        // 剪贴板页按钮：MaterialButton 默认文字色取主题 colorPrimary，不跟着皮肤走 ⇒ 显式指定
+        binding.btnSelectAll.setTextColor(p.accent)
+        binding.btnDeselectAll.setTextColor(p.textSecondary)
+        binding.btnMerge.backgroundTintList = ColorStateList.valueOf(p.accent)
+        binding.btnMerge.setTextColor(0xFFFFFFFF.toInt())
+        binding.btnClear.setTextColor(p.danger)
+    }
+
+    /** 「皮肤」：两套皮肤单选（App 与输入法键盘共用同一份设置，见 SkinStore） */
+    private fun showSkinDialog() {
+        val ids = arrayOf(SKIN_HARMONY, SKIN_ANDROID)
+        val labels = arrayOf(getString(R.string.skin_harmony), getString(R.string.skin_android))
+        val currentId = SkinStore.get(this)
+        Logger.d("Skin dialog: opened, current=$currentId")
+
+        val dialogView = layoutInflater.inflate(R.layout.dialog_skin, null)
+        val listView = dialogView.findViewById<ListView>(R.id.listSkin)
+        val tvCurrent = dialogView.findViewById<TextView>(R.id.tvSkinCurrent)
+
+        listView.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_single_choice, labels)
+        val currentIndex = ids.indexOf(currentId).coerceAtLeast(0)
+        listView.setItemChecked(currentIndex, true)
+        listView.setSelection(currentIndex)
+        tvCurrent.text = getString(R.string.skin_current, SkinStore.displayName(this, currentId))
+
+        AlertDialog.Builder(this)
+            .setTitle(R.string.skin_title)
+            .setView(dialogView)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val position = listView.checkedItemPosition
+                Logger.d("Skin dialog: OK clicked, position=$position")
+                if (position < 0 || position >= ids.size) {
+                    Logger.w("Skin dialog: invalid position=$position, no change")
+                    return@setPositiveButton
+                }
+                val picked = ids[position]
+                if (picked == currentId) {
+                    Logger.d("Skin dialog: same skin [$picked], no change")
+                    return@setPositiveButton
+                }
+                SkinStore.set(this, picked)
+                Toast.makeText(
+                    this,
+                    getString(R.string.skin_switched, SkinStore.displayName(this, picked)),
+                    Toast.LENGTH_SHORT
+                ).show()
+                // recreate：让所有已 inflate 的布局按新皮肤重建（配色只在 applySkin 里设）
+                recreate()
+            }
+            .setNegativeButton(android.R.string.cancel) { _, _ ->
+                Logger.d("Skin dialog: cancelled, no change")
+            }
+            .show()
     }
 
     private fun showLogSettingsDialog() {
@@ -894,6 +994,9 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val label = prefs.getString(KEY_BOUND_APP_LABEL, "")
         val tv = binding.tvBindAppStatus
+        val p = SkinStore.palette(this)
+        tv.setBackgroundColor(p.bindBg)
+        tv.setTextColor(p.bindFg)
         if (!label.isNullOrBlank()) {
             tv.text = getString(R.string.bind_app_status_bound, label)
             tv.visibility = View.VISIBLE

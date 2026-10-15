@@ -1,5 +1,6 @@
 package com.example.clipboardmerger
 
+import android.app.AlertDialog
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.ClipData
@@ -14,6 +15,7 @@ import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
@@ -29,6 +31,8 @@ class ClipboardInputMethodService : InputMethodService() {
     private var tvStatus: TextView? = null
     private var rvClipboard: RecyclerView? = null
     private var imeAdapter: ImeClipboardAdapter? = null
+    /** 面板根 view：切皮肤 / 每次显示时按皮肤重新上色（onCreateInputView 只会在面板首次创建时调用） */
+    private var imeRootView: View? = null
 
     private val clipboardUpdateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -105,6 +109,7 @@ class ClipboardInputMethodService : InputMethodService() {
     override fun onCreateInputView(): View {
         Logger.d("IMEService.onCreateInputView")
         val view = layoutInflater.inflate(R.layout.ime_view, null)
+        imeRootView = view
 
         val screenHeight = resources.displayMetrics.heightPixels
         val maxHeight = (screenHeight * 0.25).toInt()
@@ -118,6 +123,8 @@ class ClipboardInputMethodService : InputMethodService() {
         val btnPasteAll = view.findViewById<Button>(R.id.btnPasteAll)
         val btnSwitchBack = view.findViewById<Button>(R.id.btnSwitchBack)
         val btnDelete = view.findViewById<Button>(R.id.btnDelete)
+        val btnSettings = view.findViewById<Button>(R.id.btnSettings)
+        val btnHideIme = view.findViewById<Button>(R.id.btnHideIme)
         tvStatus = view.findViewById<TextView>(R.id.tvImeStatus)
         rvClipboard = view.findViewById<RecyclerView>(R.id.rvImeClipboard)
         // 框架 addView 强制 WRAP_CONTENT 覆盖根 view.layoutParams，但 rv 在 LinearLayout 内部的 layoutParams 不受影响；
@@ -137,7 +144,7 @@ class ClipboardInputMethodService : InputMethodService() {
             Logger.d("IMEService.layout: viewH=$actualViewH, rvH=$actualRvH, btnBarH=$actualBtnBarH, statusH=$actualTvStatusH, viewLpHeight=$lpHeight, screenH=$screenHeight, maxH=$maxHeight")
         }
 
-        imeAdapter = ImeClipboardAdapter()
+        imeAdapter = ImeClipboardAdapter(SkinStore.palette(this))
         imeAdapter?.onItemClickListener = { item ->
             Logger.d("IMEService: item clicked, committing text len=${item.content.length}")
             currentInputConnection?.commitText(item.content, 1)
@@ -255,11 +262,147 @@ class ClipboardInputMethodService : InputMethodService() {
             true
         }
 
+        // 「⚙」齿轮按钮 → 「键盘设置」菜单（皮肤在这个菜单里切，App 侧共用同一份设置，见 SkinStore）
+        btnSettings.setOnClickListener {
+            Logger.d("IMEService: gear button clicked, current skin=${SkinStore.get(this)}")
+            showSettingsMenu()
+        }
+
+        // 「隐藏」：收起面板（requestHideSelf 是 IME 侧收起软键盘的官方入口，不需要窗口 token）
+        btnHideIme.setOnClickListener {
+            Logger.d("IMEService: hide button clicked, requestHideSelf")
+            try {
+                requestHideSelf(0)
+            } catch (e: Exception) {
+                Logger.w("IMEService: requestHideSelf failed: ${e.message}")
+                hideWindow()
+            }
+        }
+
+        applySkin()
+
         return view
+    }
+
+    /**
+     * 把当前皮肤应用到面板（根底色 / 按钮栏 / 按钮 / 历史列表 / 状态条）。
+     * onCreateInputView（面板首次创建）+ onStartInputView（每次显示）都会调，
+     * 所以 App 侧改了皮肤后，键盘下次显示就是新皮肤。
+     */
+    private fun applySkin() {
+        val view = imeRootView ?: return
+        val p = SkinStore.palette(this)
+        Logger.d("IMEService.applySkin: ${SkinStore.get(this)}")
+
+        view.setBackgroundColor(p.imeBg)
+        view.findViewById<View>(R.id.btnBarScroll)?.setBackgroundColor(p.imeBarBg)
+        rvClipboard?.setBackgroundColor(p.imeBg)
+        tvStatus?.setBackgroundColor(p.imeStatusBg)
+        tvStatus?.setTextColor(p.imeStatusFg)
+
+        // 按钮底色顺序与 SkinPalette.imeKeyColors 一致：粘贴/全部粘贴/切换/删除/清空/⚙设置/隐藏
+        val buttonIds = listOf(
+            R.id.btnPasteLast, R.id.btnPasteAll, R.id.btnSwitchBack,
+            R.id.btnDelete, R.id.btnClearClipboard, R.id.btnSettings, R.id.btnHideIme
+        )
+        for ((index, id) in buttonIds.withIndex()) {
+            val button = view.findViewById<Button>(id) ?: continue
+            button.setBackgroundColor(p.imeKeyColors.getOrElse(index) { p.imeKeyColors.last() })
+            button.setTextColor(p.imeKeyFg)
+        }
+
+        imeAdapter?.let { adapter ->
+            adapter.palette = p
+            adapter.notifyDataSetChanged()
+        }
+    }
+
+    /**
+     * 面板内「⚙」按钮：弹出「键盘设置」菜单（对齐鸿蒙版键盘的 ⚙ 设置）。
+     *
+     * 皮肤只是菜单里的一项 —— 齿轮只做入口，选项在 [showSkinDialog] 里；以后键盘自己的设置
+     * （切换目标 / 面板高度之类）往这里加一项即可，不要再往按钮栏塞独立按钮。
+     */
+    private fun showSettingsMenu() {
+        val current = SkinStore.displayName(this, SkinStore.get(this))
+        val items = arrayOf(getString(R.string.ime_menu_skin, current))
+        Logger.d("IMEService.showSettingsMenu: opened, current skin=${SkinStore.get(this)}")
+        try {
+            val dialog = AlertDialog.Builder(this)
+                .setTitle(R.string.ime_menu_title)
+                .setItems(items) { _, which ->
+                    Logger.d("IMEService.showSettingsMenu: clicked item=$which")
+                    if (which == 0) showSkinDialog()
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .create()
+            attachImeWindow(dialog)
+            dialog.show()
+        } catch (e: Exception) {
+            Logger.w("IMEService.showSettingsMenu failed: ${e.message}, fallback=直接开皮肤弹框")
+            showSkinDialog()
+        }
+    }
+
+    /**
+     * 输入法内的弹框必须依附输入法窗口：窗口类型 TYPE_APPLICATION_ATTACHED_DIALOG + 输入法窗口 token，
+     * 否则 WMS 会丢 BadTokenException（App 侧 Activity 的 AlertDialog 不需要这一步）。
+     */
+    private fun attachImeWindow(dialog: AlertDialog) {
+        val imeToken = window.window?.attributes?.token
+        Logger.d("IMEService.attachImeWindow: imeToken=${imeToken != null}")
+        dialog.window?.let { w ->
+            w.setType(WindowManager.LayoutParams.TYPE_APPLICATION_ATTACHED_DIALOG)
+            if (imeToken != null) {
+                val lp = w.attributes
+                lp.token = imeToken
+                w.attributes = lp
+            }
+        }
+    }
+
+    /**
+     * 「键盘设置 → 皮肤」弹框（对齐鸿蒙版键盘 ⚙ 里的「键盘皮肤」）。
+     *
+     * 弹框依附输入法窗口（见 [attachImeWindow]）；个别系统/机型仍可能拒绝 ⇒ catch 后兜底成
+     * 「直接切到另一套」，保证入口任何时候都有效果（不崩、不静默）。
+     */
+    private fun showSkinDialog() {
+        val ids = arrayOf(SKIN_HARMONY, SKIN_ANDROID)
+        val labels = arrayOf(getString(R.string.skin_harmony), getString(R.string.skin_android))
+        val currentId = SkinStore.get(this)
+        val checked = ids.indexOf(currentId).coerceAtLeast(0)
+        try {
+            val dialog = AlertDialog.Builder(this)
+                .setTitle(R.string.skin_title)
+                .setSingleChoiceItems(labels, checked) { d, which ->
+                    setSkin(ids[which])
+                    d.dismiss()
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .create()
+
+            attachImeWindow(dialog)
+            dialog.show()
+            Logger.d("IMEService.showSkinDialog: shown, current=$currentId, checked=$checked")
+        } catch (e: Exception) {
+            Logger.w("IMEService.showSkinDialog failed: ${e.message}, fallback=直接切换")
+            setSkin(if (currentId == SKIN_ANDROID) SKIN_HARMONY else SKIN_ANDROID)
+        }
+    }
+
+    /** 切换皮肤：持久化 → 立即给当前面板上色 → 状态条回显（App 侧下次进前台也是新皮肤） */
+    private fun setSkin(id: String) {
+        SkinStore.set(this, id)
+        applySkin()
+        tvStatus?.text = getString(R.string.skin_switched, SkinStore.displayName(this, id))
+        Logger.d("IMEService.setSkin: $id")
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        // 面板 view 会复用：App 侧刚改过皮肤时靠这里补上（见 applySkin 注释）
+        applySkin()
         val rvH = rvClipboard?.height ?: -1
         val rvItemCount = imeAdapter?.itemCount ?: -1
         Logger.d("IMEService.onStartInputView: restarting=$restarting, fieldName=${info?.fieldName}, rvH=$rvH, rvItems=$rvItemCount")

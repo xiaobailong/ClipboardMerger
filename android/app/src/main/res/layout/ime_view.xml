@@ -6,95 +6,244 @@
     android:orientation="vertical"
     android:padding="0dp">
 
-    <!-- 按钮栏 -->
-    <LinearLayout
-        android:id="@+id/btnBarContainer"
+    <!-- 按钮栏：横向可滚动（按钮数已到 7 个，窄屏放不下时靠滑动仍能点到全部） -->
+    <HorizontalScrollView
+        android:id="@+id/btnBarScroll"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingHorizontal="6dp"
-        android:paddingVertical="3dp">
+        android:background="#FF1B5E20"
+        android:fillViewport="true"
+        android:scrollbars="none">
 
-        <Button
-            android:id="@+id/btnPasteLast"
+        <LinearLayout
+            android:id="@+id/btnBarContainer"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:background="#FF388E3C"
-            android:minHeight="0dp"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="2dp"
-            android:text="粘贴"
-            android:textColor="#FFFFFF"
-            android:textSize="11sp" />
-
-        <Button
-            android:id="@+id/btnPasteAll"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="3dp"
-            android:background="#FFFF9800"
-            android:minHeight="0dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
             android:paddingHorizontal="6dp"
-            android:paddingVertical="2dp"
-            android:text="全部粘贴"
-            android:textColor="#FFFFFF"
-            android:textSize="11sp"
-            android:textStyle="bold" />
+            android:paddingVertical="3dp">
 
-        <Button
-            android:id="@+id/btnSwitchBack"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="3dp"
-            android:background="#FF2E7D32"
-            android:minHeight="0dp"
-            android:paddingHorizontal="6dp"
-            android:paddingVertical="2dp"
-            android:text="切换"
-            android:textColor="#FFFFFF"
-            android:textSize="11sp" />
+            <Button
+                android:id="@+id/btnPasteLast"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="#FF388E3C"
+                android:minHeight="0dp"
+                android:minWidth="0dp"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="2dp"
+                android:text="粘贴"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp" />
 
-        <Button
-            android:id="@+id/btnDelete"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="3dp"
-            android:background="#FFD32F2F"
-            android:minHeight="0dp"
-            android:paddingHorizontal="6dp"
-            android:paddingVertical="2dp"
-            android:text="删除"
-            android:textColor="#FFFFFF"
-            android:textSize="11sp" />
+            <Button
+                android:id="@+id/btnPasteAll"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="3dp"
+                android:background="#FFFF9800"
+                android:minHeight="0dp"
+                android:minWidth="0dp"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="2dp"
+                android:text="全部粘贴"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp"
+                android:textStyle="bold" />
 
-        <Button
-            android:id="@+id/btnClearClipboard"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="3dp"
-            android:background="#FFB00020"
-            android:minHeight="0dp"
-            android:paddingHorizontal="6dp"
-            android:paddingVertical="2dp"
-            android:text="清空"
-            android:textColor="#FFFFFF"
-            android:textSize="11sp" />
+            <Button
+                android:id="@+id/btnSwitchBack"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="3dp"
+                android:background="#FF2E7D32"
+                android:minHeight="0dp"
+                android:minWidth="0dp"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="2dp"
+                android:text="切换"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp" />
 
-    </LinearLayout>
+            <Button
+                android:id="@+id/btnDelete"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="3dp"
+                android:background="#FFD32F2F"
+                android:minHeight="0dp"
+                android:minWidth="0dp"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="2dp"
+                android:text="删除"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp" />
 
-    <!-- 剪贴板历史列表 -->
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rvImeClipboard"
+            <Button
+                android:id="@+id/btnClearClipboard"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="3dp"
+                android:background="#FFB00020"
+                android:minHeight="0dp"
+                android:minWidth="0dp"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="2dp"
+                android:text="清空"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp" />
+
+            <Button
+                android:id="@+id/btnSettings"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="3dp"
+                android:background="#FF37474F"
+                android:minHeight="0dp"
+                android:minWidth="0dp"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="2dp"
+                android:text="⚙"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/btnHideIme"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="3dp"
+                android:background="#FF455A64"
+                android:minHeight="0dp"
+                android:minWidth="0dp"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="2dp"
+                android:text="▼"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
+
+        </LinearLayout>
+    </HorizontalScrollView>
+
+    <!-- 内容区：历史列表 / 「⚙ 键盘设置」互斥显示（点 ⚙ 收起列表、展开设置项；高度由代码算，切换不跳高） -->
+    <FrameLayout
+        android:id="@+id/contentArea"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:scrollbars="vertical"
-        android:fadeScrollbars="false"
-        android:scrollbarThumbVertical="@android:color/darker_gray"
-        android:scrollbarSize="4dp"
-        android:background="#FF14501E"
-        android:clipToPadding="false"
-        android:padding="1dp" />
+        android:background="#FF14501E">
+
+        <!-- 剪贴板历史列表 -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvImeClipboard"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:fadeScrollbars="false"
+            android:padding="1dp"
+            android:scrollbarSize="4dp"
+            android:scrollbarThumbVertical="@android:color/darker_gray"
+            android:scrollbars="vertical" />
+
+        <!-- 键盘设置（点 ⚙ 展开）：现在只有「皮肤设置」，以后键盘自己的设置往这里加一行 -->
+        <ScrollView
+            android:id="@+id/scrollImeSettings"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#FF1A3A1A"
+            android:scrollbars="vertical"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="4dp">
+
+                <TextView
+                    android:id="@+id/tvSettingsTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/ime_settings_panel_title"
+                    android:textColor="#FFA5D6A7"
+                    android:textSize="10sp" />
+
+                <TextView
+                    android:id="@+id/tvSkinSection"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:textColor="#FFA5D6A7"
+                    android:textSize="10sp" />
+
+                <LinearLayout
+                    android:id="@+id/rowSkinHarmony"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingVertical="5dp">
+
+                    <TextView
+                        android:id="@+id/tvMarkHarmony"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="◉"
+                        android:textColor="#FFA5D6A7"
+                        android:textSize="13sp" />
+
+                    <TextView
+                        android:id="@+id/tvNameHarmony"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
+                        android:text="@string/skin_harmony"
+                        android:textColor="#FFE8F5E9"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/rowSkinAndroid"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingVertical="5dp">
+
+                    <TextView
+                        android:id="@+id/tvMarkAndroid"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="○"
+                        android:textColor="#FFA5D6A7"
+                        android:textSize="13sp" />
+
+                    <TextView
+                        android:id="@+id/tvNameAndroid"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
+                        android:text="@string/skin_android"
+                        android:textColor="#FFE8F5E9"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <Button
+                    android:id="@+id/btnSettingsBack"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:background="#FF455A64"
+                    android:minHeight="0dp"
+                    android:minWidth="0dp"
+                    android:paddingHorizontal="8dp"
+                    android:paddingVertical="2dp"
+                    android:text="@string/ime_settings_back"
+                    android:textColor="#FFFFFF"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </ScrollView>
+    </FrameLayout>
 
     <!-- 底部状态栏 -->
     <TextView

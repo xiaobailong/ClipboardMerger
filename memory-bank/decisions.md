@@ -179,3 +179,14 @@
 - 备选与为何不选: ①给 `build-harmony.bat` 加 `install` 开关 —— 出包与装机混在一条命令里，失败时说不清是编译还是装机的问题，也违反 `PIT-044` 铁律 1（构建与装机必须分成两条命令）；②继续手工敲命令 —— 就是上面那些坑的来源；③用 DevEco Studio 的 Run —— 要 GUI + 账号，命令行/自动化场景用不上。
 - 影响与约束: ①脚本只认「已构建好的签名 HAP」，找不到会提示先跑 `build-harmony.bat`；②`-r` 在个别机型（HLS-AL00）不顶用，失败分支给出 `uninstall` 兜底命令（会丢数据，需人工决定）；③「手机锁屏 ⇒ 拉不起 App」是系统限制（`10106102`），脚本只提示，不算失败（装机本身已成功，退出码 0）；④`.clinerules` 的目录结构清单与 `harmony/README.md` 已同步登记该脚本。
 - 复用入口: `deploy-harmony.bat`、`harmony/README.md` 的「装机脚本 `deploy-harmony.bat`」一节
+
+## ADR-017 Android 版皮肤：`SkinStore` 单一真源 + App「⋮→皮肤」/ 键盘「⚙→皮肤」，切皮肤靠重上色
+- 日期: 2026-10-15 | 状态: 已采纳
+- 背景: 鸿蒙版早有皮肤切换（`Theme.ets` / `theme_id`，见 `ISSUE-008`），Android 版配色散在 `colors.xml` 与各 layout 的硬编码里。用户要求「参考鸿蒙版给 App 和输入法加皮肤切换」，并明确：皮肤放进齿轮按钮弹出的设置菜单、键盘要有隐藏按钮、以及切到鸿蒙风后「⋮」不能还是白色。
+- 决策: ①新增 `Skin.kt` = `SkinPalette`（一套皮肤的**全部**颜色）+ `HARMONY_SKIN` / `ANDROID_SKIN`（逐项对齐鸿蒙 `HARMONY_PALETTE` / `ANDROID_PALETTE`）+ `SkinStore`（id 存 `clipboard_merger_settings / skin_id`，缺省 = 鸿蒙风）；②入口：App = 工具栏「⋮」`settings_menu` 的 `action_skin`（菜单项标题实时带当前皮肤名）→ `dialog_skin.xml` 单选 → `recreate()`；键盘 = 按钮栏末尾齿轮「⚙」→「键盘设置」菜单（`ime_menu_title`）→「皮肤（当前：…）」弹框（**不单独占「皮肤」按钮**，对齐鸿蒙键盘 ⚙ 里的「键盘皮肤」）；③上色统一走 `MainActivity.applySkin()` / `ClipboardInputMethodService.applySkin()`，颜色只从 `SkinStore.palette()` 取；键盘面板每次 `onStartInputView` 再上一遍（面板 view 会被复用）；④键盘内弹框依附 IME 窗口：`TYPE_APPLICATION_ATTACHED_DIALOG` + `window.window.attributes.token`，抽成 `attachImeWindow()`，异常兜底「直接切到另一套」；⑤键盘按钮栏加「隐藏」（`requestHideSelf(0)`，失败退 `hideWindow()`），并把按钮栏套 `HorizontalScrollView`（7 个键窄屏放不下）。
+- 理由: Android 版 App 与输入法**同进程 + 同一份 SharedPreferences**（与鸿蒙沙箱相反，`PIT-039`）⇒ 一份设置天然共用，没必要照抄鸿蒙的「各沙箱一份」；用 `SkinPalette` 集中取色比改 theme / attr 动静小，且能覆盖 Service 里 inflate 的 IME 面板（那不在 Activity 主题作用域内）。
+- 备选与为何不选: ①两套 Android theme + `attr` 引用（IME 面板在 Service 里 inflate，主题够不着，还要动全部 layout）；②`AppCompatDelegate.setDefaultNightMode`（那是系统深色模式，不是项目皮肤）；③键盘里再存一份独立皮肤（同进程能读同一 prefs，没必要且会与 App 不一致）；④「隐藏」用 `hideWindow()` 直调（`requestHideSelf` 是官方入口，`hideWindow` 只作兜底）。
+- 影响与约束: ①皮肤是全局的：键盘里切也会改 App（同进程共享 prefs），与鸿蒙版不同，弹框 hint 已写明；②`SkinPalette.imeKeyColors` 顺序 = 按钮栏顺序（粘贴/全部粘贴/切换/删除/清空/⚙设置/隐藏），增删按钮必须同步改 `applySkin()` 的 `buttonIds` 与注释；③切皮肤后 App 走 `recreate()`（配色只在 `applySkin()` 里设，别指望 `onResume` 自动变色）；④浅色皮肤下「白色图标隐形」的坑见 `PIT-051`；⑤`res/color/checkbox_ime_tint.xml` 这类固定色 selector 已由运行期 tint 取代。
+- 复用入口: `Skin.kt`（`SkinStore` / `SkinPalette` / `HARMONY_SKIN` / `ANDROID_SKIN`）、`MainActivity.applySkin/showSkinDialog`、`ClipboardInputMethodService.applySkin/showSettingsMenu/attachImeWindow/setSkin`
+- 验证（编译级）: `gradle :app:assembleDebug --console=plain`（本机 `tmp\gradle-check.bat` 包装）→ `BUILD SUCCESSFUL`，APK `android\build\outputs\apk\debug\JianJi-v1.88-89.apk`；**真机观感（⋮ 颜色 / 齿轮菜单 / 隐藏按钮 / 两套皮肤）待复验**
+

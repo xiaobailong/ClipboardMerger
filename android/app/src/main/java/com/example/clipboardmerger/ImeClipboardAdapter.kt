@@ -1,10 +1,11 @@
 package com.example.clipboardmerger
 
+import android.content.res.ColorStateList
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 
-class ImeClipboardAdapter : RecyclerView.Adapter<ImeClipboardAdapter.ViewHolder>() {
+class ImeClipboardAdapter(var palette: SkinPalette) : RecyclerView.Adapter<ImeClipboardAdapter.ViewHolder>() {
 
     private val items = mutableListOf<ClipboardItem>()
 
@@ -60,6 +61,12 @@ class ImeClipboardAdapter : RecyclerView.Adapter<ImeClipboardAdapter.ViewHolder>
 
     override fun getItemCount(): Int = items.size
 
+    /** 勾选框配色（选中=危险色 / 未选中=皮肤标记色），替代固定色的 res/color/checkbox_ime_tint.xml */
+    private fun imeTint(): ColorStateList = ColorStateList(
+        arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+        intArrayOf(palette.danger, palette.imeMark)
+    )
+
     inner class ViewHolder(itemView: android.widget.LinearLayout) : RecyclerView.ViewHolder(itemView) {
 
         private val checkBox: android.widget.CheckBox = itemView.findViewById(R.id.cbImeItem)
@@ -75,6 +82,11 @@ class ImeClipboardAdapter : RecyclerView.Adapter<ImeClipboardAdapter.ViewHolder>
         }
 
         fun bind(item: ClipboardItem, position: Int) {
+            // 行背景 / 正文 / 勾选框都跟皮肤走（IMEService 改 palette 后调 notifyDataSetChanged 重新绑定）
+            itemView.setBackgroundColor(palette.imeItemBg)
+            tvContent.setTextColor(palette.imeItemFg)
+            checkBox.buttonTintList = imeTint()
+
             tvContent.text = item.content
             tvContent.setOnClickListener {
                 Logger.d("ImeAdapter.itemClick: pos=$position, len=${item.content.length}")

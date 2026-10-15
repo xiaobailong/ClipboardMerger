@@ -360,3 +360,12 @@
 - 反例: 只按 `op` 分发；不带来源、靠其它 `parameters` 字段猜；收到事件后原样再 publish 一次（"帮对面转发"）。
 - 自检: 一次操作在日志里只应出现一次 `publishHist: ... → IME` 和一次 `appSync: ... ← App`；不应出现 App 收到自己 clear 而反复清空。
 - 首次记录: 2026-10-07
+
+## PIT-051 复用「深色顶栏的白色图标」到浅色皮肤 ⇒ 图标隐形（「⋮」看着像没了）
+- 触发条件: 图标是**写死白色**的 vector / selector（当年配紫顶栏 `#6200EE`），皮肤切成鸿蒙风（白底栏 `#FFFFFF`）后继续用同一张图。
+- 现象: 白图标画在白顶栏上 = 完全看不见（`drawable/ic_more_vert.xml` 的 `android:fillColor="#FFFFFFFF"`）；同类还有 IME 勾选框的固定色 selector `res/color/checkbox_ime_tint.xml`（选中红/未选绿，浅色皮肤下也不搭）。
+- 正确做法: 颜色一律跟 `SkinStore.palette()` 走 —— 菜单图标 `binding.toolbar.menu.findItem(R.id.action_settings)?.icon?.mutate()?.setTintList(ColorStateList.valueOf(p.barText))`（`mutate()` 防污染共享 drawable 的 state），勾选框改 `CheckBox.buttonTintList`（`ImeClipboardAdapter.imeTint()`）。**同一条 tint 要在两处都设**：`applySkin()` 与 `onCreateOptionsMenu()` —— 菜单可能在 `applySkin()` 之后才创建 / 被 `invalidateOptionsMenu` 重建，只设一处会漏。
+- 反例: 直接把 vector 的 `fillColor` 改成黑色（另一套皮肤顶栏又变紫底黑点，同样看不见）；只在 `applySkin()` 里设 tint；把「看不见」当成图标资源丢了（`PIT-030` 那种是编译期报错，这里是运行期观感问题）。
+- 自检: 切到鸿蒙风 → 顶栏右侧「⋮」应为深色 `#1C1C1E`；切回 Android 原版 → 回到白色；日志有 `applySkin: harmony` / `applySkin: android` 对应行。
+- 首次记录: 2026-10-15（编译 `BUILD SUCCESSFUL`；真机观感待复验）
+

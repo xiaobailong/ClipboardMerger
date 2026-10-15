@@ -1,5 +1,6 @@
 package com.example.clipboardmerger
 
+import android.content.res.ColorStateList
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
@@ -9,6 +10,7 @@ import java.util.Date
 import java.util.Locale
 
 class ClipboardAdapter(
+    private val palette: SkinPalette,
     private val onToggleSelection: (Int) -> Unit,
     private val onDelete: (Int) -> Unit
 ) : RecyclerView.Adapter<ClipboardAdapter.ViewHolder>() {
@@ -62,6 +64,13 @@ class ClipboardAdapter(
         }
 
         fun bind(item: ClipboardItem, position: Int) {
+            // 卡片配色跟随皮肤（dialog 切皮肤后 MainActivity recreate ⇒ 适配器是新建的，颜色一定是最新的）
+            binding.cardView.setCardBackgroundColor(palette.cardBg)
+            binding.deleteBackground.setBackgroundColor(palette.danger)
+            binding.tvIndex.setTextColor(palette.textSecondary)
+            binding.tvContent.setTextColor(palette.textPrimary)
+            binding.checkBox.buttonTintList = ColorStateList.valueOf(palette.accent)
+
             binding.tvIndex.text = "#${position + 1}  ${dateFormat.format(Date(item.timestamp))}"
             binding.tvContent.text = item.content
             binding.checkBox.setOnCheckedChangeListener(null)

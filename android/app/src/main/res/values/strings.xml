@@ -106,5 +106,19 @@
     <string name="overlay_permission_missing">当前未开启。\n\n华为 / 鸿蒙会拦掉通知横幅，开启「显示在其他应用上层」后，打开绑定的 App 时剪集会直接把切换提醒弹到前台（不用再去点通知）。\n\n设置路径：设置 → 应用 → 剪集 → 显示在其他应用上层</string>
     <string name="overlay_permission_granted">已开启 ✔\n\n打开绑定的 App 时，剪集会直接弹出切换提醒。</string>
 
+    <string name="settings_skin">皮肤</string>
+    <string name="skin_title">皮肤设置</string>
+    <string name="skin_harmony">鸿蒙风（清淡白）</string>
+    <string name="skin_android">Android 原版（深绿键盘）</string>
+    <string name="skin_name_harmony">鸿蒙风</string>
+    <string name="skin_name_android">Android 原版</string>
+    <string name="skin_hint">App 与「剪集输入法」键盘共用同一份皮肤设置。切换后 App 立即生效，键盘在下次显示时生效（键盘面板里点「⚙」→「皮肤设置」选一行也能切）。</string>
+    <string name="skin_current">当前皮肤：%1$s</string>
+    <string name="skin_switched">已切换到 %1$s</string>
+    <string name="ime_settings_panel_title">键盘设置</string>
+    <string name="ime_settings_skin_section">皮肤设置（当前：%1$s）</string>
+    <string name="ime_settings_back">返回列表</string>
+    <string name="ime_status_settings">⚙ 键盘设置</string>
+
 
 </resources>
