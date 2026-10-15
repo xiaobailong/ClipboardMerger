@@ -6,7 +6,7 @@ Android 剪贴板合并工具「剪集」，支持输入法（IME）内嵌剪贴
 ## 技术栈
 - **语言**: Kotlin
 - **构建**: Gradle 8.5 / Android Gradle Plugin 8.2.0
-- **JDK**: 21 (D:\Tools\DevTools\Java\JDK\jdk-21.0.10-oracle)
+- **JDK**: 17 (D:\Tools\DevTools\Java\JDK\jdk-17.0.10-oracle，见 `ADR-018`：AGP 8.2 + JDK 21 无法造 jdkImage)
 - **Android SDK**: D:\Tools\DevTools\Android\Sdk
 - **关键依赖**: ViewModel, LiveData, Coroutines, ViewBinding, Material, RecyclerView, SwipeRefreshLayout
 - **最低 SDK**: 26, 目标 SDK: 34
@@ -57,10 +57,10 @@ ClipboardMerger/
   - `scripts\build.bat clean` — 清理构建产物
 - **自测编译（不推送）**: 直接跑 Gradle 命令，禁止跑 `scripts\build.bat`（会真的 push + 发 Release）
   ```cmd
-  set JAVA_HOME=D:\Tools\DevTools\Java\JDK\jdk-21.0.10-oracle
+  set JAVA_HOME=D:\Tools\DevTools\Java\JDK\jdk-17.0.10-oracle
   set ANDROID_HOME=D:\Tools\DevTools\Android\Sdk
   set ANDROID_SDK_ROOT=D:\Tools\DevTools\Android\Sdk
-  set "PATH=D:\Tools\DevTools\Java\JDK\jdk-21.0.10-oracle\bin;D:\Tools\DevTools\gradle\gradle-8.5\bin;%PATH%"
+  set "PATH=D:\Tools\DevTools\Java\JDK\jdk-17.0.10-oracle\bin;D:\Tools\DevTools\gradle\gradle-8.5\bin;%PATH%"
   cd /d "d:\WorkSpace\test\ClipboardMerger\android"
   call gradle assembleDebug & exit
   ```

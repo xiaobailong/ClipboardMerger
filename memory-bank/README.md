@@ -63,6 +63,8 @@
 | Android 版皮肤切换（App ⋮→皮肤 / 键盘 ⚙→面板内「皮肤设置」单选）、键盘 ▼ 收起 | `ADR-017` | D |
 | 编辑器改了文件却没生效 / Edit 报 no+multiple match（IDE 正在 `pull --rebase`） | `PIT-052` | P |
 | 编译警告清理（`adapterPosition` / IME 切换 / `MOVE_TO_FOREGROUND` / `optString(name,null)`） | `PIT-053` | P |
+| javac「源值 8 已过时」；升 Java 目标 11/17 ⇒ AGP `JdkImageTransform` + jlink 挂 | `PIT-054` | P |
+| 构建工具链统一 JDK 17（daemon / `JAVA_HOME` / Java&Kotlin 目标 = 17，删 `-Xlint:-options`） | `ADR-018` | D |
 | 浅色皮肤下复用白色图标 ⇒ 顶栏「⋮」隐形 / 勾选框颜色不搭 | `PIT-051` | P |
 
 

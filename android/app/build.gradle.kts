@@ -56,14 +56,16 @@ android {
             )
         }
     }
-    // Java 8 在 JDK 21 上已标记过时（javac 警告「源值 8 已过时」）⇒ 升到 11。
+    // JVM 目标 17，与 `org.gradle.java.home` 的 JDK 17 统一。
+    // 注意：目标 ≥ 9 时 AGP 会用 jlink 造 jdkImage（JdkImageTransform），而 JDK 21 的 jlink
+    // 会拒收 AGP 生成的 java.base.jmod（`ModuleTarget is malformed: ... android`）⇒ 必须用 JDK 17。
     // Java / Kotlin 的 JVM 目标必须一致，否则 AGP 8 报 "Inconsistent JVM-target compatibility"。
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions {
-        jvmTarget = "11"
+        jvmTarget = "17"
     }
     buildFeatures {
         viewBinding = true

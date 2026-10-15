@@ -7,10 +7,10 @@ REM  剪集 清理构建产物脚本
 REM  用途: 清理 Android (Gradle) 和鸿蒙 (hvigor) 的构建输出、缓存和产物
 REM ============================================
 
-set "JAVA_HOME=D:\Tools\DevTools\Java\JDK\jdk-21.0.10-oracle"
+set "JAVA_HOME=D:\Tools\DevTools\Java\JDK\jdk-17.0.10-oracle"
 set "ANDROID_HOME=D:\Tools\DevTools\Android\Sdk"
 set "ANDROID_SDK_ROOT=D:\Tools\DevTools\Android\Sdk"
-set "PATH=D:\Tools\DevTools\Java\JDK\jdk-21.0.10-oracle\bin;D:\Tools\DevTools\gradle\gradle-8.5\bin;%PATH%"
+set "PATH=D:\Tools\DevTools\Java\JDK\jdk-17.0.10-oracle\bin;D:\Tools\DevTools\gradle\gradle-8.5\bin;%PATH%"
 
 cd /d d:\WorkSpace\test\ClipboardMerger 2>nul || (
     echo [错误] 项目目录不存在

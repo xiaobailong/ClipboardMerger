@@ -190,3 +190,12 @@
 - 复用入口: `Skin.kt`（`SkinStore` / `SkinPalette` / `HARMONY_SKIN` / `ANDROID_SKIN`）、`MainActivity.applySkin/showSkinDialog`、`ClipboardInputMethodService.applySkin/toggleSettings/updateIdleStatus/updateSkinRows/setSkin`
 - 验证（编译级）: `gradle :app:assembleDebug --console=plain` → `BUILD SUCCESSFUL`（`compileDebugKotlin` + `packageDebug` 实跑、Kotlin 警告 0 条，21:25），APK `android\build\outputs\apk\debug\JianJi-v1.89-90.apk`；**真机观感（⋮ 颜色 / ⚙ 设置区 / ▼ 收起 / 两套皮肤）待复验**
 
+## ADR-018 构建工具链统一 JDK 17：daemon / `JAVA_HOME` / Java&Kotlin 目标全 = 17
+- 日期: 2026-10-15 | 状态: 已采纳（取代「Java 8 目标 + `-Xlint:-options` 静音」的临时做法）
+- 背景: 构建日志里 3 条 javac「源值 8 已过时」（JDK 21 已淘汰 `-source/-target 8`）。用户明确选「路 A」：把工具链统一到 JDK 17，而不是就地静音警告。
+- 决策: ①`android/gradle.properties` 的 `org.gradle.java.home` → `D:/Tools/DevTools/Java/JDK/jdk-17.0.10-oracle`；②`android/app/build.gradle.kts` 的 `sourceCompatibility` / `targetCompatibility` / `kotlinOptions.jvmTarget` 全改 17，并删掉临时的 `-Xlint:-options` 块；③`scripts/build.bat` / `scripts/clean.bat` 的 `JAVA_HOME` / `PATH` 同步改 JDK 17；④`README.md` 环境表与 `.trae/rules/project_rules.md` 的 JDK 说明同步改 17；⑤`scripts/build-harmony.bat`（hvigor）与 `harmony/README.md`（手工签名调 `java.exe`）里的 JDK 21 **不动** —— 与 AGP 无关。
+- 理由: 目标 ≥ 9 时 AGP 必用 jlink 造 jdkImage（`JdkImageTransform`），而 JDK 21 的 jlink 拒收 AGP 生成的 `java.base.jmod`（`PIT-054`）；JDK 17 正是 AGP 8.2 官方要求的运行 JDK，实测 11/17 目标都能过。目标与工具链同版本 ⇒ 真「统一」，javac 过时警告自然消失，不需要任何静音开关。
+- 备选与为何不选: ①保留 Java 8 目标 + `-Xlint:-options`（只改 2 行、0 风险，但把「源值 8 已过时」这笔债留在工程里，且 JDK 后续版本可能直接移除 8）；②目标取 11（同样要 JDK 17，只是数值更保守，无额外收益）；③升 AGP 继续用 JDK 21（本机未验证，还得连带评估 AGP 升级影响）；④JDK 21 + 目标 21（实测**同一处 jlink 失败**，见 `PIT-054` 矩阵）。
+- 影响与约束: ①所有构建入口（`build.bat` / `clean.bat` / 直跑 gradle）都用同一个 JDK 17；②字节码 major=61，D8 正常 dex；③`minSdk 26` 与目标 17 无冲突（未用 record/sealed 等需额外 desugar 的特性）；④鸿蒙侧工具链不受影响；⑤改 `org.gradle.java.home` 会触发换 daemon ⇒ 首次构建慢一档。
+- 验证（编译级）: `gradle :app:assembleDebug --console=plain`（JDK 17）→ `BUILD SUCCESSFUL in 14s`、日志警告 **0** 条；`BuildConfig.class` / `MainActivity.class` 均 `major=61`；产物 `android\build\outputs\apk\debug\JianJi-v1.92-93.apk`（21:56）
+

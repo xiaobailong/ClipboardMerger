@@ -198,7 +198,7 @@ App 主界面标题栏显示当前版本号（如 `v1.29`），与 `android/vers
 
 | 工具 | 版本 | 说明 |
 |---|---|---|
-| JDK | 21+ | 推荐 Oracle JDK 21 |
+| JDK | 17 | `org.gradle.java.home` / `JAVA_HOME` 都指向 Oracle JDK 17（AGP 8.2 要求；见 `ADR-018`） |
 | Android SDK | API 34 | 需安装 `platforms;android-34` 和 `build-tools;34.0.0` |
 | Gradle | 8.5 | 通过 wrapper 自动下载 |
 | Android Gradle Plugin | 8.2.0 | 项目依赖 |

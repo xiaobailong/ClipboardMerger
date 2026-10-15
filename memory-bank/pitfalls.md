@@ -388,6 +388,46 @@
   ④`JSONObject.optString(name, null)`：第二参在 Kotlin 侧是平台类型，传 `null` 会依次报 `inferred type is Nothing?` / `String?` ⇒ 改成 `optString(name).takeIf { it.isNotBlank() }`（保住「没有该字段 ⇒ null」的原语义）；`optString(name, "")` 会把 `null` 变成 `""`，别用；
   ⑤`val dialog = AlertDialog.Builder(...).show()`：`show()` 已交还对象却赋值给没人用的变量 ⇒ 去掉 `val dialog = `。
 - 反例: 一律 `@Suppress("DEPRECATION")` 盖住（①③有干净替代，盖住只是把可还的债留着）；把 `optString` 的兜底改成 `""`（PUT 会带上空的 `sha`，语义变了）。
-- 自检: 重跑 `assembleDebug`，`Select-String -Path <日志> -Pattern '^w: '` 无输出（只剩 javac 的「源值 8 已过时」3 条，与本工程无关）。
+- 自检: 重跑 `assembleDebug`，`Select-String -Path <日志> -Pattern '^w: '` 无输出。
+- 后续（2026-10-15 21:43）: 当时剩下的 3 条 javac「源值 8 已过时」也已清零，见 **`PIT-054`**（**不能**靠升 Java 目标，改用 `-Xlint:-options`）。
 - 首次记录: 2026-10-15（21:23 构建：Kotlin 警告 0 条，`BUILD SUCCESSFUL`）
+
+
+## PIT-054 AGP 8.2 + JDK 21：把 Java 目标从 8 升到 11/17 会触发 `JdkImageTransform`，jlink 报 `ModuleTarget is malformed`
+- 触发条件: `android/app/build.gradle.kts` 的 `compileOptions` 写 `JavaVersion.VERSION_11`（17 同理）后跑 `assembleDebug`（本机 gradle 8.5 + AGP 8.2.0 + `jdk-21.0.10-oracle` + `platforms/android-34`）。
+- 现象: `:app:compileDebugJavaWithJavac` FAILED → `Could not resolve all files for configuration ':app:androidJdkImage'` → `JdkImageTransform: ...\platforms\android-34\core-for-system-modules.jar` → 只回显一句
+  `Error while executing process ...\jdk-21.0.10-oracle\bin\jlink.exe with arguments {...}`；**jlink 的真实报错不在 Gradle 日志里**，要手工复现才看得到：
+  `错误: jdk.tools.jlink.plugin.PluginException: ModuleTarget is malformed: platformString missing delimiter: android`
+  （JDK 21 的 jlink 校验 `ModuleTarget`，AGP 生成的 `java.base.jmod` 里是 `android`、没有 `-` 分隔符）。Java 目标 8 时 AGP 不造 jdkImage，所以原来能过。
+- 正确做法（本工程采用，可直接复制）: 保留 Java 8 目标，只关掉"过时选项"这条提示（javac 提示原文就叫你用这个参数）:
+  ```kotlin
+  compileOptions {
+      sourceCompatibility = JavaVersion.VERSION_1_8
+      targetCompatibility = JavaVersion.VERSION_1_8
+  }
+  kotlinOptions { jvmTarget = "1.8" }
+  ```
+  ```kotlin
+  tasks.withType<JavaCompile>().configureEach { options.compilerArgs.add("-Xlint:-options") }
+  ```
+- 诊断用命令（拿 jlink 原文报错 / 退出码 1）:
+  `jlink --module-path %USERPROFILE%\.gradle\caches\transforms-3\<hash>\transformed\output\temp\jmod --add-modules java.base --output tmp\jlink-out --disable-plugin system-modules`
+- 反例: 把「源值 8 已过时」当成"升级目标就完事"，直接把 source/target 提到 11（反而让**本来能过的构建**挂掉）；也别用 `-Xlint:none` 全局静音（会连别的 javac 提示一起吞）。
+- 实测矩阵（本机 gradle 8.5 + AGP 8.2.0 + `platforms/android-34`，任务 `:app:assembleDebug`）:
+
+  | daemon JDK（`org.gradle.java.home`） | Java／Kotlin 目标 | 结果 |
+  | --- | --- | --- |
+  | 21.0.10（现状） | 8 | ✅ 成功（3 条 javac「源值 8 已过时」⇒ 已用 `-Xlint:-options` 清零） |
+  | 21.0.10 | 11 | ❌ jlink `ModuleTarget is malformed` |
+  | 21.0.10 | **21** | ❌ **同一处** jlink 失败 ⇒「统一升到 21」不解决问题：只要目标 ≥ 9，AGP 就必须造 jdkImage |
+  | 17.0.10 | 11 | ✅ `BUILD SUCCESSFUL in 40s` |
+  | 17.0.10 | 17 | ✅ `BUILD SUCCESSFUL in 28s` |
+
+  ⇒ 想真上 11/17：把 `org.gradle.java.home` 换成 `D:/Tools/DevTools/Java/JDK/jdk-17.0.10-oracle`（AGP 8.2 官方要求的 JDK 17），再把 `sourceCompatibility` / `targetCompatibility` / `jvmTarget` 同步改 11 或 17（两者必须一致）。升 AGP 也可行但未在本机验证。
+- 附坑（会误导判断）: 被超时杀掉 / 并发跑的 Gradle 会脏化 `transforms-3` 缓存，之后**同一个 transform 会在 `jlink.exe {--version}` 这一步**报 `Error while executing process`（连 JDK 17 都"必失败"，看着像 JDK 不兼容）；
+  实测清掉 `%USERPROFILE%\.gradle\caches\transforms-3\<那个 hash 目录>`（并 `gradle --stop`）后，**同一配置立刻成功**。
+- 自检: 重跑 `assembleDebug` 为 `BUILD SUCCESSFUL`，且
+  `Select-String -Path <日志> -Pattern '警告|obsolete|androidJdkImage' -CaseSensitive` 计数为 0。
+- 首次记录: 2026-10-15（21:43 构建：javac 警告 0 条，`BUILD SUCCESSFUL in 10s`）
+- 后续（2026-10-15 21:56，见 `ADR-018`）: 按「路 A」落地 —— daemon JDK / `JAVA_HOME` 换 JDK 17，Java&Kotlin 目标改 17，临时的 `-Xlint:-options` 已删除。实测 `:app:assembleDebug` → `BUILD SUCCESSFUL in 14s`、警告 0 条，`BuildConfig.class` / `MainActivity.class` 均 `major=61`。本条保留，作为「**为什么不能用 JDK 21**」的判据。
 
