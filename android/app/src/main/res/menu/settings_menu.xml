@@ -20,6 +20,9 @@
         android:id="@+id/action_reminder_settings"
         android:title="@string/settings_reminder" />
     <item
+        android:id="@+id/action_recycle_bin_settings"
+        android:title="@string/settings_recycle_bin" />
+    <item
         android:id="@+id/action_keep_alive"
         android:title="@string/settings_keep_alive" />
     <item

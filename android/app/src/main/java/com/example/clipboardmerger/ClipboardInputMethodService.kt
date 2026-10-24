@@ -174,6 +174,11 @@ class ClipboardInputMethodService : InputMethodService() {
             Logger.d("IMEService: clear system clipboard and all collected items")
             val clip = ClipData.newPlainText("", "")
             clipboardManager?.setPrimaryClip(clip)
+            val items = ClipboardRepository.loadItems(applicationContext)
+            if (items.isNotEmpty()) {
+                RecycleBinRepository.moveToRecycleBin(applicationContext, items, "ime")
+                Logger.d("IMEService: moved ${items.size} items to recycle bin")
+            }
             ClipboardRepository.clearAll(applicationContext)
             lastClipLabel = ""
             imeAdapter?.submitList(emptyList())

@@ -56,6 +56,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var viewModel: ClipboardViewModel
     private lateinit var adapter: ClipboardAdapter
+    private lateinit var recycleAdapter: RecycleBinAdapter
     private var clipboardManager: ClipboardManager? = null
     private var selfUpdating = false
     private val handler = Handler(Looper.getMainLooper())
@@ -65,6 +66,7 @@ class MainActivity : AppCompatActivity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             Logger.d("BroadcastReceiver: received clipboard update from service")
             viewModel.reloadFromRepository()
+            viewModel.reloadRecycleBin()
         }
     }
 
@@ -125,6 +127,7 @@ class MainActivity : AppCompatActivity() {
         setupSwipeToDelete()
         setupSwipeRefresh()
         setupButtons()
+        setupRecycleBin()
         observeViewModel()
         registerClipboardListener()
         registerClipboardUpdateReceiver()
@@ -150,6 +153,7 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         Logger.d("========== onResume ==========")
         viewModel.reloadFromRepository()
+        viewModel.reloadRecycleBin()
         setupIMEStatus()
         setupBindAppStatus()
         scheduleClipboardRead()
@@ -346,6 +350,207 @@ class MainActivity : AppCompatActivity() {
             binding.recyclerView.visibility =
                 if (list.isEmpty()) View.GONE else View.VISIBLE
         }
+        viewModel.recycleItems.observe(this) { list ->
+            Logger.d("ViewModel recycleItems changed: size=${list.size}")
+            recycleAdapter.submitList(list)
+            val recycleRoot = binding.layoutRecycleBin.root
+            recycleRoot.findViewById<android.widget.TextView>(R.id.tvRecycleEmpty).visibility =
+                if (list.isEmpty()) View.VISIBLE else View.GONE
+            recycleRoot.findViewById<RecyclerView>(R.id.rvRecycleBin).visibility =
+                if (list.isEmpty()) View.GONE else View.VISIBLE
+        }
+    }
+
+    private fun setupRecycleBin() {
+        Logger.d("setupRecycleBin")
+        val recycleRoot = binding.layoutRecycleBin.root
+        recycleAdapter = RecycleBinAdapter(
+            palette = SkinStore.palette(this),
+            onToggleSelection = { position -> viewModel.toggleRecycleSelection(position) },
+            onDelete = { position -> deleteRecycleItemAt(position) }
+        )
+        val rvRecycle = recycleRoot.findViewById<RecyclerView>(R.id.rvRecycleBin)
+        rvRecycle.layoutManager = LinearLayoutManager(this)
+        rvRecycle.adapter = recycleAdapter
+
+        val swipeToDelete = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
+            0, ItemTouchHelper.LEFT
+        ) {
+            override fun getSwipeThreshold(viewHolder: RecyclerView.ViewHolder): Float = 0.25f
+            override fun getSwipeEscapeVelocity(defaultValue: Float): Float = defaultValue * 0.5f
+            override fun onMove(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder,
+                target: RecyclerView.ViewHolder
+            ): Boolean = false
+
+            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
+                val position = viewHolder.bindingAdapterPosition
+                if (position != RecyclerView.NO_POSITION) {
+                    Logger.d("RecycleBin.onSwiped: position=$position")
+                    deleteRecycleItemAt(position)
+                }
+            }
+
+            override fun onChildDraw(
+                c: Canvas, recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder,
+                dX: Float, dY: Float, actionState: Int, isCurrentlyActive: Boolean
+            ) {
+                if (actionState == ItemTouchHelper.ACTION_STATE_SWIPE) {
+                    val holder = viewHolder as? RecycleBinAdapter.ViewHolder
+                    val cardView = holder?.cardView ?: viewHolder.itemView
+                    cardView.translationX = dX.coerceAtMost(0f)
+                    return
+                }
+                super.onChildDraw(c, recyclerView, viewHolder, dX, dY, actionState, isCurrentlyActive)
+            }
+
+            override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
+                super.clearView(recyclerView, viewHolder)
+                val holder = viewHolder as? RecycleBinAdapter.ViewHolder
+                holder?.cardView?.translationX = 0f
+            }
+        })
+        swipeToDelete.attachToRecyclerView(rvRecycle)
+
+        recycleRoot.findViewById<View>(R.id.btnRecycleSelectAll).setOnClickListener {
+            Logger.d("[BUTTON] Recycle SelectAll clicked")
+            viewModel.selectAllRecycle()
+        }
+        recycleRoot.findViewById<View>(R.id.btnRecycleDeselectAll).setOnClickListener {
+            Logger.d("[BUTTON] Recycle DeselectAll clicked")
+            viewModel.deselectAllRecycle()
+        }
+        recycleRoot.findViewById<View>(R.id.btnRecycleRestoreSelected).setOnClickListener {
+            Logger.d("[BUTTON] Recycle RestoreSelected clicked")
+            restoreSelectedItems()
+        }
+        recycleRoot.findViewById<View>(R.id.btnRecycleRestoreAll).setOnClickListener {
+            Logger.d("[BUTTON] Recycle RestoreAll clicked")
+            restoreAllItems()
+        }
+        recycleRoot.findViewById<View>(R.id.btnRecycleRestoreRecent).setOnClickListener {
+            Logger.d("[BUTTON] Recycle RestoreRecent clicked")
+            restoreRecentBatch()
+        }
+        recycleRoot.findViewById<View>(R.id.btnRecycleRestoreBatch).setOnClickListener {
+            Logger.d("[BUTTON] Recycle RestoreBatch clicked")
+            showRestoreBatchDialog()
+        }
+        recycleRoot.findViewById<View>(R.id.btnRecycleClear).setOnClickListener {
+            Logger.d("[BUTTON] Recycle Clear clicked")
+            clearRecycleBin()
+        }
+    }
+
+    private fun deleteRecycleItemAt(position: Int) {
+        Logger.d("deleteRecycleItemAt: position=$position")
+        val list = viewModel.recycleItems.value ?: return
+        if (position in 0 until list.size) {
+            val item = list[position]
+            RecycleBinRepository.removeItems(this, listOf(item.id))
+            viewModel.reloadRecycleBin()
+            Toast.makeText(this, R.string.toast_item_deleted, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun restoreAllItems() {
+        val all = viewModel.recycleItems.value ?: emptyList()
+        if (all.isEmpty()) {
+            Toast.makeText(this, R.string.toast_recycle_empty, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val count = all.size
+        viewModel.restoreAll()
+        notifyClipboardUpdated()
+        Toast.makeText(this, getString(R.string.toast_restore_all_done, count), Toast.LENGTH_SHORT).show()
+    }
+
+    private fun restoreSelectedItems() {
+        val selected = viewModel.getSelectedRecycleItems()
+        if (selected.isEmpty()) {
+            Toast.makeText(this, R.string.toast_restore_selected_none, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val count = selected.size
+        viewModel.restoreSelected()
+        notifyClipboardUpdated()
+        Toast.makeText(this, getString(R.string.toast_restore_selected_done, count), Toast.LENGTH_SHORT).show()
+    }
+
+    private fun restoreRecentBatch() {
+        val batches = viewModel.getBatchIds()
+        if (batches.isEmpty()) {
+            Toast.makeText(this, R.string.toast_recycle_empty, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val recent = batches.first()
+        val count = viewModel.recycleItems.value?.count { it.batchId == recent } ?: 0
+        viewModel.restoreRecentBatch()
+        notifyClipboardUpdated()
+        Toast.makeText(this, getString(R.string.toast_restore_recent_done, count), Toast.LENGTH_SHORT).show()
+    }
+
+    private fun showRestoreBatchDialog() {
+        val batches = viewModel.getBatchIds()
+        if (batches.isEmpty()) {
+            Toast.makeText(this, R.string.dialog_restore_batch_empty, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val batchCounts = batches.associateWith { batchId ->
+            viewModel.recycleItems.value?.count { it.batchId == batchId } ?: 0
+        }
+        val labels = batches.map { batchId ->
+            val count = batchCounts[batchId] ?: 0
+            "$batchId  ($count 条)"
+        }
+        val listView = ListView(this)
+        val batchAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_single_choice, labels)
+        listView.adapter = batchAdapter
+        listView.choiceMode = ListView.CHOICE_MODE_SINGLE
+        listView.setItemChecked(0, true)
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.dialog_restore_batch_title)
+            .setView(listView)
+            .setPositiveButton(R.string.dialog_restore_batch_confirm) { _, _ ->
+                val pos = listView.checkedItemPosition
+                if (pos in batches.indices) {
+                    val batchId = batches[pos]
+                    val count = batchCounts[batchId] ?: 0
+                    viewModel.restoreBatch(batchId)
+                    notifyClipboardUpdated()
+                    Toast.makeText(this, getString(R.string.toast_restore_batch_done, count), Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .create()
+        dialog.show()
+    }
+
+    private fun clearRecycleBin() {
+        val all = viewModel.recycleItems.value ?: emptyList()
+        if (all.isEmpty()) {
+            Toast.makeText(this, R.string.toast_recycle_empty, Toast.LENGTH_SHORT).show()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.btn_recycle_clear)
+            .setMessage("确定要清空回收站吗？此操作不可撤销。")
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                viewModel.clearRecycleBin()
+                Toast.makeText(this, R.string.toast_recycle_cleared, Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun notifyClipboardUpdated() {
+        val intent = Intent(ClipboardService.ACTION_CLIPBOARD_UPDATED).apply {
+            setPackage(packageName)
+        }
+        sendBroadcast(intent)
+        Logger.d("notifyClipboardUpdated: broadcast sent")
     }
 
     private fun performMerge() {
@@ -441,16 +646,25 @@ class MainActivity : AppCompatActivity() {
     private fun setupTabs() {
         Logger.d("setupTabs")
         binding.tabLayout.addTab(binding.tabLayout.newTab().setText(R.string.tab_clipboard))
+        binding.tabLayout.addTab(binding.tabLayout.newTab().setText(R.string.tab_recycle_bin))
         binding.tabLayout.addTab(binding.tabLayout.newTab().setText(R.string.tab_github))
         binding.tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
             override fun onTabSelected(tab: TabLayout.Tab?) {
                 when (tab?.position) {
                     0 -> {
                         binding.layoutClipboard.visibility = View.VISIBLE
+                        binding.layoutRecycleBin.root.visibility = View.GONE
                         binding.layoutGithub.root.visibility = View.GONE
                     }
                     1 -> {
                         binding.layoutClipboard.visibility = View.GONE
+                        binding.layoutRecycleBin.root.visibility = View.VISIBLE
+                        binding.layoutGithub.root.visibility = View.GONE
+                        viewModel.reloadRecycleBin()
+                    }
+                    2 -> {
+                        binding.layoutClipboard.visibility = View.GONE
+                        binding.layoutRecycleBin.root.visibility = View.GONE
                         binding.layoutGithub.root.visibility = View.VISIBLE
                     }
                 }
@@ -635,6 +849,10 @@ class MainActivity : AppCompatActivity() {
                     showReminderSettingsDialog()
                     true
                 }
+                R.id.action_recycle_bin_settings -> {
+                    showRecycleBinSettingsDialog()
+                    true
+                }
                 R.id.action_keep_alive -> {
                     showKeepAliveDialog()
                     true
@@ -683,6 +901,25 @@ class MainActivity : AppCompatActivity() {
         binding.btnMerge.backgroundTintList = ColorStateList.valueOf(p.accent)
         binding.btnMerge.setTextColor(0xFFFFFFFF.toInt())
         binding.btnClear.setTextColor(p.danger)
+
+        // 回收站页按钮与底色
+        val recycleRoot = binding.layoutRecycleBin.root
+        recycleRoot.setBackgroundColor(p.pageBg)
+        recycleRoot.findViewById<RecyclerView>(R.id.rvRecycleBin).setBackgroundColor(p.pageBg)
+        recycleRoot.findViewById<android.widget.TextView>(R.id.tvRecycleEmpty).setTextColor(p.textSecondary)
+        recycleRoot.findViewById<View>(R.id.btnRecycleSelectAll).let { (it as android.widget.TextView).setTextColor(p.accent) }
+        recycleRoot.findViewById<View>(R.id.btnRecycleDeselectAll).let { (it as android.widget.TextView).setTextColor(p.textSecondary) }
+        recycleRoot.findViewById<View>(R.id.btnRecycleRestoreSelected).let { btn ->
+            (btn as com.google.android.material.button.MaterialButton).backgroundTintList = ColorStateList.valueOf(p.accent)
+            btn.setTextColor(0xFFFFFFFF.toInt())
+        }
+        recycleRoot.findViewById<View>(R.id.btnRecycleRestoreAll).let { (it as android.widget.TextView).setTextColor(p.accent) }
+        recycleRoot.findViewById<View>(R.id.btnRecycleRestoreRecent).let { (it as android.widget.TextView).setTextColor(p.accent) }
+        recycleRoot.findViewById<View>(R.id.btnRecycleRestoreBatch).let { (it as android.widget.TextView).setTextColor(p.accent) }
+        recycleRoot.findViewById<View>(R.id.btnRecycleClear).let { (it as android.widget.TextView).setTextColor(p.danger) }
+        if (::recycleAdapter.isInitialized) {
+            recycleAdapter.notifyDataSetChanged()
+        }
     }
 
     /** 「皮肤」：两套皮肤单选（App 与输入法键盘共用同一份设置，见 SkinStore） */
@@ -884,6 +1121,42 @@ class MainActivity : AppCompatActivity() {
             .setTitle(R.string.reminder_settings_title)
             .setView(dialogView)
             .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    /** 「回收站设置」：选择回收站保留数据的最大天数，过期自动清理 */
+    private fun showRecycleBinSettingsDialog() {
+        Logger.d("Recycle bin settings dialog: opened")
+        val daysOptions = intArrayOf(7, 15, 30, 90, RecycleBinRepository.RETENTION_FOREVER)
+        val labels = arrayOf(
+            getString(R.string.recycle_retention_7_days),
+            getString(R.string.recycle_retention_15_days),
+            getString(R.string.recycle_retention_30_days),
+            getString(R.string.recycle_retention_90_days),
+            getString(R.string.recycle_retention_forever)
+        )
+        val current = RecycleBinRepository.getRetentionDays(this)
+        val currentIndex = daysOptions.indexOf(current).let { if (it < 0) 2 else it }
+
+        var selectedIndex = currentIndex
+        AlertDialog.Builder(this)
+            .setTitle(R.string.recycle_settings_title)
+            .setSingleChoiceItems(labels, currentIndex) { _, which ->
+                selectedIndex = which
+            }
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val days = daysOptions[selectedIndex]
+                RecycleBinRepository.setRetentionDays(this, days)
+                val msg = if (days == RecycleBinRepository.RETENTION_FOREVER) {
+                    getString(R.string.recycle_retention_forever_toast)
+                } else {
+                    getString(R.string.recycle_retention_changed_toast, days)
+                }
+                Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                Logger.d("Recycle bin settings: retention days set to $days")
+                viewModel.reloadRecycleBin()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
             .show()
     }
 

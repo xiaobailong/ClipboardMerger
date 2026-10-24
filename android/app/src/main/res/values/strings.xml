@@ -16,6 +16,7 @@
     <string name="ime_status_disabled">输入法: 未激活 ⚠️ (点击切换键盘)</string>
 
     <string name="tab_clipboard">剪切板</string>
+    <string name="tab_recycle_bin">回收站</string>
     <string name="tab_github">GitHub</string>
     <string name="github_need_settings">请先设置GitHub仓库信息</string>
     <string name="github_fetching">正在从GitHub拉取文件…</string>
@@ -79,6 +80,7 @@
     <string name="bind_app_overlay_grant">去开启</string>
     <string name="settings_overlay_permission">悬浮提醒权限</string>
     <string name="settings_reminder">提醒设置</string>
+    <string name="settings_recycle_bin">回收站设置</string>
     <string name="bind_app_search_hint">搜索应用名 / 包名</string>
     <string name="reminder_settings_title">提醒设置</string>
     <string name="reminder_bubble_title">悬浮提醒</string>
@@ -120,5 +122,33 @@
     <string name="ime_settings_back">返回列表</string>
     <string name="ime_status_settings">⚙ 键盘设置</string>
 
+    <!-- 回收站 -->
+    <string name="txt_recycle_empty">回收站为空</string>
+    <string name="btn_restore_selected">恢复选择</string>
+    <string name="btn_restore_all">全部恢复</string>
+    <string name="btn_restore_recent">恢复最近批次</string>
+    <string name="btn_restore_batch">恢复指定批次</string>
+    <string name="btn_recycle_clear">清空回收站</string>
+    <string name="toast_recycle_empty">回收站为空</string>
+    <string name="toast_restore_all_done">已全部恢复 (%d 条)</string>
+    <string name="toast_restore_selected_none">请先选择要恢复的项目</string>
+    <string name="toast_restore_selected_done">已恢复选中 (%d 条)</string>
+    <string name="toast_restore_recent_done">已恢复最近批次 (%d 条)</string>
+    <string name="toast_restore_batch_done">已恢复批次 (%d 条)</string>
+    <string name="toast_recycle_cleared">回收站已清空</string>
+    <string name="dialog_restore_batch_title">选择要恢复的批次</string>
+    <string name="dialog_restore_batch_hint">选择批次</string>
+    <string name="dialog_restore_batch_empty">没有可恢复的批次</string>
+    <string name="dialog_restore_batch_confirm">恢复</string>
+
+    <!-- 回收站设置 -->
+    <string name="recycle_settings_title">回收站设置</string>
+    <string name="recycle_retention_7_days">保留 7 天</string>
+    <string name="recycle_retention_15_days">保留 15 天</string>
+    <string name="recycle_retention_30_days">保留 30 天（默认）</string>
+    <string name="recycle_retention_90_days">保留 90 天</string>
+    <string name="recycle_retention_forever">永久保留</string>
+    <string name="recycle_retention_changed_toast">回收站保留时间已设为 %1$d 天</string>
+    <string name="recycle_retention_forever_toast">回收站已设为永久保留</string>
 
 </resources>

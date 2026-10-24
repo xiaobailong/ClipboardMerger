@@ -29,7 +29,7 @@ class RecycleBinAdapter(
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        holder.bind(items[position], position)
+        holder.bind(items[position])
     }
 
     override fun getItemCount(): Int = items.size
@@ -49,7 +49,7 @@ class RecycleBinAdapter(
             }
         }
 
-        fun bind(item: RecyclerItem, position: Int) {
+        fun bind(item: RecyclerItem) {
             binding.cardView.setCardBackgroundColor(palette.cardBg)
             binding.deleteBackground.setBackgroundColor(palette.danger)
             binding.tvIndex.setTextColor(palette.textSecondary)
