@@ -13,8 +13,11 @@ val versionFile = rootProject.file("version.properties")
 if (versionFile.exists()) {
     versionProps.load(versionFile.inputStream())
 }
-val vCode = (versionProps.getProperty("versionCode") ?: "1").toInt()
-val vName = versionProps.getProperty("versionName") ?: "1.0"
+val vName = versionProps.getProperty("versionName") ?: "1.0.0"
+val nameParts = vName.split(".")
+val vCode = nameParts.getOrElse(0) { "1" }.toInt() * 10000 +
+            nameParts.getOrElse(1) { "0" }.toInt() * 100 +
+            nameParts.getOrElse(2) { "0" }.toInt()
 
 // 构建信息（写进 BuildConfig，供“关于”弹框展示）
 val buildTime = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
@@ -77,25 +80,6 @@ android {
             (it as com.android.build.gradle.internal.api.BaseVariantOutputImpl).outputFileName =
                 "JianJi-v${vName}-${vCode}.apk"
         }
-    }
-}
-
-tasks.register("incrementVersion") {
-    doLast {
-        val vf = rootProject.file("version.properties")
-        val props = Properties()
-        if (vf.exists()) {
-            props.load(vf.inputStream())
-        }
-        val oldCode = (props.getProperty("versionCode") ?: "1").toInt()
-        val newCode = oldCode + 1
-        val parts = (props.getProperty("versionName") ?: "1.0").split(".")
-        val minor = parts.getOrElse(1) { "0" }.toInt() + 1
-        val newName = "${parts[0]}.${minor}"
-        props.setProperty("versionCode", newCode.toString())
-        props.setProperty("versionName", newName)
-        vf.writer().use { props.store(it, null) }
-        println("Version: code ${oldCode} -> ${newCode}, name -> ${newName}")
     }
 }
 

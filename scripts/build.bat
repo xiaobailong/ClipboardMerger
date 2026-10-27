@@ -128,15 +128,37 @@ echo ============================================
 echo.
 
 echo [1/5] 递增版本号...
-pushd android
-call "D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" incrementVersion --console=plain
-popd
-if %ERRORLEVEL% neq 0 (
-    echo [错误] 版本号递增失败！Exit code=%ERRORLEVEL%
+if not exist "scripts\tools\bump_version.ps1" (
+    echo [错误] 缺少版本号更新脚本: scripts\tools\bump_version.ps1
+    echo        可从 git 恢复: git checkout scripts\tools\bump_version.ps1
     call :countdown
     exit /b 1
 )
-echo       完成。
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\tools\bump_version.ps1" 2^>^&1`) do set "BUMP_OUT=%%v"
+set "BUMP_RC=!ERRORLEVEL!"
+if !BUMP_RC! neq 0 (
+    echo [错误] 版本号递增失败（rc=!BUMP_RC!）
+    echo        !BUMP_OUT!
+    call :countdown
+    exit /b 1
+)
+for /f "tokens=2,3 delims==|>->" %%a in ("!BUMP_OUT!") do (
+    set "CUR_VER=%%a"
+    set "V_NAME=%%b"
+    set "V_CODE=%%c"
+)
+if not defined V_NAME (
+    echo [错误] bump_version.ps1 未返回新版本号（输出: !BUMP_OUT!）
+    call :countdown
+    exit /b 1
+)
+if "!V_NAME!"=="!CUR_VER!" (
+    echo [错误] 版本号未递增：仍是 !V_NAME!
+    call :countdown
+    exit /b 1
+)
+echo        !CUR_VER! -^> !V_NAME! ^(code=!V_CODE!^)
+set "TAG=v!V_NAME!"
 
 echo [2/5] 清理旧产物...
 pushd android
@@ -193,11 +215,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo       读取版本信息...
-for /f "tokens=2 delims==" %%i in ('findstr "versionName=" android\version.properties') do set "V_NAME=%%i"
-for /f "tokens=2 delims==" %%i in ('findstr "versionCode=" android\version.properties') do set "V_CODE=%%i"
-set "TAG=v%V_NAME%"
-echo       版本: %TAG% (code=%V_CODE%)
+echo       版本: v%V_NAME% (code=%V_CODE%)
 
 echo       提交版本变更...
 call git add android\version.properties
@@ -302,20 +320,37 @@ if %ERRORLEVEL% neq 0 (
 echo       工作区干净。
 
 echo [3/6] 递增版本号...
-pushd android
-call "D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" incrementVersion --no-daemon --console=plain
-popd
-if %ERRORLEVEL% neq 0 (
-    echo [错误] 版本号递增失败！
+if not exist "scripts\tools\bump_version.ps1" (
+    echo [错误] 缺少版本号更新脚本: scripts\tools\bump_version.ps1
+    echo        可从 git 恢复: git checkout scripts\tools\bump_version.ps1
     pause
     exit /b 1
 )
-echo       完成。
-
-echo [4/6] 读取版本信息...
-for /f "tokens=2 delims==" %%i in ('findstr "versionName=" android\version.properties') do set "V_NAME=%%i"
-for /f "tokens=2 delims==" %%i in ('findstr "versionCode=" android\version.properties') do set "V_CODE=%%i"
-set "TAG=v%V_NAME%"
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\tools\bump_version.ps1" 2^>^&1`) do set "BUMP_OUT=%%v"
+set "BUMP_RC=!ERRORLEVEL!"
+if !BUMP_RC! neq 0 (
+    echo [错误] 版本号递增失败（rc=!BUMP_RC!）
+    echo        !BUMP_OUT!
+    pause
+    exit /b 1
+)
+for /f "tokens=2,3 delims==|>->" %%a in ("!BUMP_OUT!") do (
+    set "CUR_VER=%%a"
+    set "V_NAME=%%b"
+    set "V_CODE=%%c"
+)
+if not defined V_NAME (
+    echo [错误] bump_version.ps1 未返回新版本号（输出: !BUMP_OUT!）
+    pause
+    exit /b 1
+)
+if "!V_NAME!"=="!CUR_VER!" (
+    echo [错误] 版本号未递增：仍是 !V_NAME!
+    pause
+    exit /b 1
+)
+echo        !CUR_VER! -^> !V_NAME! ^(code=!V_CODE!^)
+set "TAG=v!V_NAME!"
 echo       版本: %TAG% (code=%V_CODE%)
 
 echo [5/6] 编译APK...

@@ -58,6 +58,7 @@ set "GH_REPO=xiaobailong/ClipboardMerger"
 set "HARMONY_DIR=%~dp0..\harmony"
 set "HAP_OUT=%~dp0..\build\harmony"
 set "VER_TOOL=%~dp0tools\harmony-version.js"
+set "BUMP_PS=%~dp0tools\bump-version-harmony.ps1"
 
 if not exist "%HARMONY_DIR%\entry" (
     echo [错误] 找不到 harmony\entry —— 本脚本必须在仓库根运行
@@ -169,7 +170,7 @@ echo ============================================
 echo  [3/3] 收集产物
 echo ============================================
 for /f %%i in ('node "%VER_TOOL%" name') do set "H_VNAME=%%i"
-for /f %%i in ('node "%VER_TOOL%" code') do set "H_VCODE=%%i"
+if not defined H_VCODE for /f %%i in ('node "%VER_TOOL%" code') do set "H_VCODE=%%i"
 echo       鸿蒙版本: v%H_VNAME% (build %H_VCODE%)
 
 set "HAP_FILE="
@@ -212,9 +213,28 @@ echo.
 echo ============================================
 echo  [发布 1/6] 递增鸿蒙版本号
 echo ============================================
-node "%VER_TOOL%" bump
-if errorlevel 1 (
-    echo [错误] 版本号递增失败
+if not exist "%BUMP_PS%" (
+    echo [错误] 缺少版本号更新脚本: %BUMP_PS%
+    echo        可从 git 恢复: git checkout scripts\tools\bump-version-harmony.ps1
+    pause
+    exit /b 1
+)
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%BUMP_PS%" 2^>^&1`) do set "BUMP_OUT=%%v"
+set "BUMP_RC=!ERRORLEVEL!"
+if !BUMP_RC! neq 0 (
+    echo [错误] 版本号递增失败（rc=!BUMP_RC!）
+    echo        !BUMP_OUT!
+    pause
+    exit /b 1
+)
+for /f "tokens=2,3 delims==|>->" %%a in ("!BUMP_OUT!") do (
+    set "H_CURVER=%%a"
+    set "H_VCODE=%%c"
+)
+echo       !BUMP_OUT!
+echo.
+if not defined H_CURVER (
+    echo [错误] bump-version-harmony.ps1 未返回版本号
     pause
     exit /b 1
 )
