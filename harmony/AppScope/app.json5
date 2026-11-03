@@ -1,6 +1,6 @@
 {
   "app": {
-    "bundleName": "com.xiaobailong.clipboardmerger",
+    "bundleName": "com.example.clipboardmerger",
     "vendor": "xiaobailong",
     "versionCode": 20100,
     "versionName": "1.101.0",
