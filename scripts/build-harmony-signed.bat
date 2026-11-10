@@ -402,7 +402,7 @@ echo       Release 链接:
 "%GH_EXE%" release view "%TAG%" --repo "%GH_REPO%" --json url --template "{{.url}}"
 echo.
 echo       Release 附件（只应有 .hap）:
-"%GH_EXE%" release view "%TAG%" --repo "%GH_REPO%" --json assets --jq ".[].name"
+"%GH_EXE%" release view "%TAG%" --repo "%GH_REPO%" --json assets --jq ".assets[].name"
 exit /b 0
 
 REM ============================================

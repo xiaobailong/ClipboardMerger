@@ -222,3 +222,5 @@
 
 - 追加（2026-11-10，用户明确「.app 和 .hap 都需要，但只有 .hap 上传 git、通过 gh」）: 脚本加 `publish` 子命令 —— 出包（HAP + .app）并校验后，只把 **HAP** 用 `gh release create` / `release upload --clobber` 传到 `xiaobailong/ClipboardMerger` 的 `harmony-v<版本>`；`.app` 只留本地（`build\harmony` + 仓库根），`.gitignore` 已含 `*.app` ⇒ 永不进 git、永不上 Release。`publish` **不做 git commit/push/tag**（Release 的 tag 由 gh 指向远端 HEAD；工作区有未提交改动时脚本打印提示）；要连源码一起发布时先走 `build-harmony.bat release` 或手动提交。验证: `build-harmony-signed.bat help` 列出 `publish`；发布逻辑两条分支（Release 已存在 / 不存在）都只调 `release upload <HAP>`，命令里不含 `.app`；`.app` 在 `git status` 中不出现。
 
+- 发布实测（2026-11-10）: 源码提交 `580bb05` 推 `main`，tag `harmony-v1.101.0` → `580bb05`（远端一致）；`build-harmony-signed.bat publish` 建 Release https://github.com/xiaobailong/ClipboardMerger/releases/tag/harmony-v1.101.0 ，附件**只有** `JianJi-HarmonyOS-v1.101.0-20100-release.hap`（`.app` 未上传、未入 git，本地 110KB 留仓库根与 `build\harmony`）。同时修正发布后列附件的 jq：`--json assets --jq ".assets[].name"`（原 `.[]` 会报 `expected an object but got: array`）。
+
