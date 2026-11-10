@@ -276,6 +276,12 @@ scripts\build-harmony.bat release
 
 # 清理鸿蒙构建产物
 scripts\build-harmony.bat clean
+
+# 发布签名出包（HAP + .app，release 模式 + signature_fabu_pro 材料；.app 带版本号拷到仓库根，仅本地）
+scripts\build-harmony-signed.bat
+
+# 出包并发布：只把 .hap 上传 GitHub Release（.app 不上传、不入 git）
+scripts\build-harmony-signed.bat publish
 ```
 
 > 鸿蒙构建依赖 DevEco Studio（hvigor + HarmonyOS SDK），脚本会自动定位工具链路径。

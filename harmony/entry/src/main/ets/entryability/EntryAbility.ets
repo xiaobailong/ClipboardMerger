@@ -3,6 +3,7 @@ import { window } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { ClipboardStore } from '../model/ClipboardStore';
 import { Logger } from '../model/Logger';
+import { RecycleBinStore } from '../model/RecycleBin';
 import { ThemeStore } from '../model/Theme';
 
 /**
@@ -17,6 +18,7 @@ export default class EntryAbility extends UIAbility {
     Logger.init(this.context);
     ThemeStore.init(this.context);
     ClipboardStore.init(this.context);
+    RecycleBinStore.init(this.context);
     Logger.d('EntryAbility.onCreate');
   }
 

@@ -6,6 +6,7 @@ import { commonEventManager } from '@kit.BasicServicesKit';
 import { EventBus, HistEvent, SRC_APP } from '../model/EventBus';
 import settings from '@ohos.settings';
 import { ClipItem, ClipboardStore } from '../model/ClipboardStore';
+import { RecycleBinStore, RecycleItem, RETENTION_FOREVER, STATE_RECYCLE } from '../model/RecycleBin';
 import { BUILD_TIME, BUILD_TYPE, GIT_COMMIT } from '../model/BuildInfo';
 import { GhConfig, GitHubStore } from '../model/GitHub';
 import { ImeItem, ImeSettings } from '../model/ImeSettings';
@@ -26,7 +27,7 @@ const MERGE_SEP: string = '\n';
 
 /**
  * 主界面：对齐 Android 版 activity_main.xml
- * Toolbar(剪集 + 更多) → Tab[剪切板 / GitHub] → 按钮栏[全选/取消全选/合并选中/清空全部]
+ * Toolbar(剪集 + 更多) → Tab[剪切板 / 回收站 / GitHub] → 按钮栏[全选/取消全选/合并选中/清空全部]
  * → 输入法状态条 → 绑定App状态条 → 卡片列表(勾选 + 序号时间 + 内容3行 + 左滑删除)
  */
 @Entry
@@ -69,6 +70,16 @@ struct Index {
   @State ghBranch: string = 'main';
   @State ghToken: string = '';
   @StorageLink(STATE_THEME) themeId: string = 'harmony';
+  /** 回收站列表（App 进程独有；键盘侧删除/清空通过事件带过来） */
+  @StorageLink(STATE_RECYCLE) recycleItems: RecycleItem[] = [];
+  /** 回收站里勾选的记录 id（对应 Android RecyclerItem.isSelected） */
+  @State recycleSelIds: number[] = [];
+  /** 回收站保留天数（-1 = 永久保留） */
+  @State retentionDays: number = 30;
+  /** 「按批次恢复」弹层里的批次列表 */
+  @State batchIds: string[] = [];
+  /** 与 batchIds 一一对应的条数（不在 build 里反复读存储） */
+  @State batchCounts: number[] = [];
 
   private p(): Palette {
     return paletteOf(this.themeId);
@@ -125,10 +136,180 @@ struct Index {
   }
 
   private clearAll(): void {
+    const before: ClipItem[] = this.items.slice();
+    if (before.length > 0) {
+      const batch: string = RecycleBinStore.moveToRecycleBin(before, 'app');
+      Logger.d(`clearAll: moved ${before.length} items to recycle bin, batch=${batch}`);
+    }
     ClipboardStore.clear();
     this.selectedTexts = [];
     this.publishHist('clear', '', Date.now());
-    this.notice = '已清空全部记录（含系统剪贴板内容）';
+    this.notice = before.length > 0 ? `已清空 ${before.length} 条（已移入回收站）` : '剪贴板已清空';
+  }
+
+  /** 左滑删除：先移入回收站再删（对齐 Android ViewModel.deleteItem），并同步给键盘进程 */
+  private deleteItem(item: ClipItem): void {
+    const idx: number = this.items.indexOf(item);
+    if (idx < 0) {
+      return;
+    }
+    RecycleBinStore.moveToRecycleBin([item], 'app');
+    ClipboardStore.removeAt(idx);
+    this.publishHist('remove', item.text, item.timestamp);
+    this.notice = '已移入回收站';
+    Logger.d(`deleteItem: index=${idx}, recycle total=${RecycleBinStore.getItems().length}`);
+  }
+
+  // ==================== 回收站（对齐 Android 回收站 Tab） ====================
+
+  private isRecycleSelected(id: number): boolean {
+    return this.recycleSelIds.indexOf(id) >= 0;
+  }
+
+  private toggleRecycleSelect(id: number): void {
+    const i: number = this.recycleSelIds.indexOf(id);
+    if (i >= 0) {
+      this.recycleSelIds.splice(i, 1);
+    } else {
+      this.recycleSelIds.push(id);
+    }
+    this.recycleSelIds = this.recycleSelIds.slice();
+  }
+
+  private selectAllRecycle(): void {
+    const ids: number[] = [];
+    for (let i = 0; i < this.recycleItems.length; i++) {
+      ids.push(this.recycleItems[i].id);
+    }
+    this.recycleSelIds = ids;
+    this.notice = `回收站已全选 ${ids.length} 条`;
+  }
+
+  private deselectAllRecycle(): void {
+    this.recycleSelIds = [];
+    this.notice = '已取消全选';
+  }
+
+  private selectedRecycleItems(): RecycleItem[] {
+    const out: RecycleItem[] = [];
+    for (let i = 0; i < this.recycleItems.length; i++) {
+      if (this.recycleSelIds.indexOf(this.recycleItems[i].id) >= 0) {
+        out.push(this.recycleItems[i]);
+      }
+    }
+    return out;
+  }
+
+  private sourceLabel(src: string): string {
+    return src === 'ime' ? '键盘' : '应用';
+  }
+
+  private retentionText(): string {
+    return this.retentionDays === RETENTION_FOREVER ? '永久保留' : `${this.retentionDays} 天`;
+  }
+
+  private recycleBarText(): string {
+    return `🧹 回收站 ${this.recycleItems.length} 条　已选 ${this.recycleSelIds.length} 条　保留：${this.retentionText()}`;
+  }
+
+  /** 恢复一组回收站记录到剪贴板历史（并顺带同步给键盘进程），返回实际恢复条数 */
+  private restoreItems(items: RecycleItem[]): number {
+    if (items.length === 0) {
+      return 0;
+    }
+    const clipItems: ClipItem[] = [];
+    for (let i = 0; i < items.length; i++) {
+      clipItems.push({ text: items[i].text, timestamp: items[i].timestamp });
+    }
+    const n: number = ClipboardStore.restoreItems(clipItems);
+    // 键盘那份也要补回来：发一条全量快照（键盘侧 mergeItems 只补缺的）。
+    // 不用逐条 add —— 批量恢复几十条时会把 pendingOps（上限 50）挤爆，键盘离线就丢。
+    const asc: ClipItem[] = clipItems.slice();
+    asc.sort((a: ClipItem, b: ClipItem): number => a.timestamp - b.timestamp);
+    this.publishHist('snapshot', JSON.stringify(asc), Date.now());
+    Logger.d(`restoreItems: ${n}/${items.length} → history, snapshot → IME (${asc.length})`);
+    return n;
+  }
+
+  private restoreSelected(): void {
+    const sel: RecycleItem[] = this.selectedRecycleItems();
+    if (sel.length === 0) {
+      this.notice = '请先勾选要恢复的记录';
+      return;
+    }
+    const ids: number[] = [];
+    for (let i = 0; i < sel.length; i++) {
+      ids.push(sel[i].id);
+    }
+    const n: number = this.restoreItems(sel);
+    RecycleBinStore.removeIds(ids);
+    this.recycleSelIds = [];
+    this.notice = `已恢复选中 ${n} 条到剪贴板`;
+  }
+
+  private restoreAll(): void {
+    if (this.recycleItems.length === 0) {
+      this.notice = '回收站为空';
+      return;
+    }
+    const all: RecycleItem[] = this.recycleItems.slice();
+    const n: number = this.restoreItems(all);
+    RecycleBinStore.clearAll();
+    this.recycleSelIds = [];
+    this.notice = `已恢复全部 ${n}/${all.length} 条`;
+  }
+
+  private restoreRecent(): void {
+    const batches: string[] = RecycleBinStore.batchIds();
+    if (batches.length === 0) {
+      this.notice = '回收站为空';
+      return;
+    }
+    this.restoreBatch(batches[0]);
+  }
+
+  private restoreBatch(batchId: string): void {
+    const items: RecycleItem[] = RecycleBinStore.itemsByBatch(batchId);
+    if (items.length === 0) {
+      this.notice = '该批次已无可恢复记录';
+      return;
+    }
+    const n: number = this.restoreItems(items);
+    RecycleBinStore.removeBatch(batchId);
+    this.recycleSelIds = [];
+    this.notice = `已恢复批次 ${batchId}（${n} 条）`;
+  }
+
+  /** 打开「按批次恢复」弹层（对齐 Android showRestoreBatchDialog） */
+  private openBatchDialog(): void {
+    this.batchIds = RecycleBinStore.batchIds();
+    if (this.batchIds.length === 0) {
+      this.notice = '回收站为空，没有可恢复的批次';
+      return;
+    }
+    const counts: number[] = [];
+    for (let i = 0; i < this.batchIds.length; i++) {
+      counts.push(RecycleBinStore.itemsByBatch(this.batchIds[i]).length);
+    }
+    this.batchCounts = counts;
+    this.dialog = 'batch';
+  }
+
+  /** 清空回收站（先弹确认，对齐 Android「此操作不可撤销」） */
+  private confirmClearRecycle(): void {
+    if (this.recycleItems.length === 0) {
+      this.notice = '回收站为空';
+      return;
+    }
+    this.dialog = 'recycleClear';
+  }
+
+  private doClearRecycle(): void {
+    const n: number = this.recycleItems.length;
+    RecycleBinStore.clearAll();
+    this.recycleSelIds = [];
+    this.notice = `已清空回收站（${n} 条已永久删除）`;
+    Logger.d(`clearRecycleBin: removed ${n} items permanently`);
   }
 
   /**
@@ -325,8 +506,19 @@ struct Index {
             ClipboardStore.mergeItems([{ text: e.text, timestamp: e.ts }]);
           }
         } else if (e.op === 'clear') {
+          // 键盘侧清空：它把「清空前的内容」放在 e.text（JSON 快照）里 ⇒ 连同 App 这份一起移入回收站
+          // （两个进程的 preferences 不互通，见 PIT-039；老版本键盘发的是空串，parse 失败按空处理）
+          const appItems: ClipItem[] = this.items.slice();
+          if (appItems.length > 0) {
+            RecycleBinStore.moveToRecycleBin(appItems, 'ime');
+          }
+          const snap: ClipItem[] = ClipboardStore.parseSnapshot(e.text);
+          if (snap.length > 0) {
+            RecycleBinStore.moveToRecycleBin(snap, 'ime');
+          }
           ClipboardStore.clear();
-          this.notice = '已随键盘侧清空历史';
+          this.selectedTexts = [];
+          this.notice = '已随键盘侧清空历史（内容已移入回收站）';
         } else if (e.op === 'snapshot') {
           // 键盘侧全量快照（旧→新）：只补 App 这份里缺的（并顺手去掉本地重复），不删
           const items: ClipItem[] = ClipboardStore.parseSnapshot(e.text);
@@ -339,6 +531,8 @@ struct Index {
           const arr = ClipboardStore.getItems();
           for (let i = 0; i < arr.length; i++) {
             if (arr[i].text === e.text) {
+              // 键盘侧删的也留一份进回收站（只在 App 这份里确实还有该条时才记，避免重复）
+              RecycleBinStore.moveToRecycleBin([arr[i]], 'ime');
               ClipboardStore.removeAt(i);
               break;
             }
@@ -352,6 +546,9 @@ struct Index {
       this.notice = `已自动去掉 ${dropped} 条重复记录`;
     }
     this.kbRate = ImeSettings.heightRate();
+    // 回收站：EntryAbility 已 init 过；这里再调一次是幂等的兜底，顺带把保留天数读进 @State
+    RecycleBinStore.init(this.host());
+    this.retentionDays = RecycleBinStore.retentionDays();
     this.loadAbout();
     GitHubStore.init(this.host());
     this.syncGhFields();
@@ -614,11 +811,189 @@ struct Index {
       .backgroundColor(this.p().danger)
       .borderRadius(8)
       .onClick(() => {
-        ClipboardStore.removeAt(this.items.indexOf(item));
-        // 同步给键盘进程（否则键盘那份还留着这条）
-        this.publishHist('remove', item.text, item.timestamp);
-        this.notice = '项目已删除';
+        this.deleteItem(item);
       })
+  }
+
+  /** 回收站列表左滑 = 永久删除（对齐 Android RecycleBin 的 ItemTouchHelper） */
+  @Builder
+  swipePurge(item: RecycleItem) {
+    Text('永久删除')
+      .fontSize(14)
+      .fontColor(Color.White)
+      .fontWeight(FontWeight.Bold)
+      .textAlign(TextAlign.Center)
+      .width(84)
+      .height('100%')
+      .backgroundColor(this.p().danger)
+      .borderRadius(8)
+      .onClick(() => {
+        RecycleBinStore.removeIds([item.id]);
+        const si: number = this.recycleSelIds.indexOf(item.id);
+        if (si >= 0) {
+          this.recycleSelIds.splice(si, 1);
+          this.recycleSelIds = this.recycleSelIds.slice();
+        }
+        this.notice = '已永久删除 1 条';
+      })
+  }
+
+  /** 回收站页（对齐 Android content_recycle_bin.xml：两行按钮栏 + 状态行 + 列表 + 空态） */
+  @Builder
+  recyclePage() {
+    Column() {
+      Row() {
+        this.textButton('全选', this.p().accent, () => {
+          this.selectAllRecycle();
+        })
+        this.textButton('取消全选', this.p().textSecondary, () => {
+          this.deselectAllRecycle();
+        })
+        this.filledButton('恢复选中', this.p().accent, () => {
+          this.restoreSelected();
+        })
+      }
+      .width('100%')
+      .padding({ left: 8, right: 8, top: 4, bottom: 2 })
+      .backgroundColor(this.p().cardBg)
+      .alignItems(VerticalAlign.Center)
+
+      Row() {
+        this.textButton('恢复全部', this.p().accent, () => {
+          this.restoreAll();
+        })
+        this.textButton('恢复最近', this.p().accent, () => {
+          this.restoreRecent();
+        })
+        this.textButton('恢复批次', this.p().accent, () => {
+          this.openBatchDialog();
+        })
+        this.textButton('清空回收站', this.p().danger, () => {
+          this.confirmClearRecycle();
+        })
+      }
+      .width('100%')
+      .padding({ left: 8, right: 8, top: 2, bottom: 4 })
+      .backgroundColor(this.p().cardBg)
+      .alignItems(VerticalAlign.Center)
+
+      Text(this.recycleBarText())
+        .fontSize(11)
+        .fontColor(this.p().textSecondary)
+        .width('100%')
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .padding({ left: 10, right: 10, top: 4, bottom: 4 })
+
+      if (this.notice.length > 0) {
+        Text(this.notice)
+          .fontSize(12)
+          .fontColor(this.p().accent)
+          .width('100%')
+          .textAlign(TextAlign.Center)
+          .padding(4)
+      }
+
+      if (this.recycleItems.length === 0) {
+        Text('回收站为空')
+          .fontSize(16)
+          .fontColor(this.p().textSecondary)
+          .margin({ top: 48 })
+      } else {
+        List({ space: 8 }) {
+          ForEach(this.recycleItems, (item: RecycleItem) => {
+            ListItem() {
+              Row() {
+                Text(this.isRecycleSelected(item.id) ? '☑' : '☐')
+                  .fontSize(18)
+                  .fontColor(this.p().selMark)
+                  .padding({ right: 8 })
+                Column() {
+                  Text(`${this.sourceLabel(item.source)} · ${item.batchId}`)
+                    .fontSize(11)
+                    .fontColor(this.p().textSecondary)
+                  Text(item.text)
+                    .fontSize(14)
+                    .fontColor(this.p().textPrimary)
+                    .maxLines(3)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    .margin({ top: 4 })
+                  Text(`删除于 ${this.fmtTime(item.deletedAt)}`)
+                    .fontSize(10)
+                    .fontColor(this.p().textSecondary)
+                    .margin({ top: 4 })
+                }
+                .layoutWeight(1)
+                .alignItems(HorizontalAlign.Start)
+              }
+              .width('100%')
+              .padding(10)
+              .backgroundColor(this.isRecycleSelected(item.id) ? this.p().cardSelBg : this.p().cardBg)
+              .borderRadius(8)
+              .onClick(() => {
+                this.toggleRecycleSelect(item.id);
+              })
+            }
+            .swipeAction({ end: { builder: () => { this.swipePurge(item); } } })
+          }, (item: RecycleItem) => `${item.id}`)
+        }
+        .layoutWeight(1)
+        .width('100%')
+        .padding({ left: 8, right: 8, top: 4 })
+      }
+    }
+    .width('100%')
+    .layoutWeight(1)
+  }
+
+  /** 回收站设置里的一行（单选：保留天数） */
+  @Builder
+  retentionRow(days: number, label: string) {
+    Row() {
+      Text(this.retentionDays === days ? '◉' : '○')
+        .fontSize(16)
+        .fontColor(this.p().accent)
+      Text(label)
+        .fontSize(14)
+        .margin({ left: 8 })
+        .layoutWeight(1)
+    }
+    .width('100%')
+    .padding({ top: 8, bottom: 8 })
+    .onClick(() => {
+      RecycleBinStore.setRetentionDays(days);
+      this.retentionDays = days;
+      this.notice = days === RETENTION_FOREVER ? '回收站已设为永久保留' : `回收站保留 ${days} 天`;
+      Logger.d(`recycle retention: set to ${days}`);
+    })
+  }
+
+  /** 「按批次恢复」弹层里的一行（点一下就恢复该批次） */
+  @Builder
+  batchRow(batchId: string, count: number) {
+    Row() {
+      Column() {
+        Text(batchId)
+          .fontSize(13)
+          .fontColor(this.p().textPrimary)
+        Text(`${count} 条`)
+          .fontSize(11)
+          .fontColor(this.p().textSecondary)
+          .margin({ top: 2 })
+      }
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Start)
+      Text('恢复')
+        .fontSize(13)
+        .fontColor(this.p().accent)
+        .padding({ left: 12, right: 4 })
+    }
+    .width('100%')
+    .padding({ top: 8, bottom: 8 })
+    .onClick(() => {
+      this.dialog = '';
+      this.restoreBatch(batchId);
+    })
   }
 
   // ---------- GitHub 页（UI 先对齐，联网在 P2 接） ----------
@@ -690,7 +1065,7 @@ struct Index {
             .fontColor(this.p().textPrimary)
             .width('100%')
             .margin({ top: 2 })
-          Text('操作：列表里左滑某条 = 删除该条（App 与键盘两侧同步删除）')
+          Text('操作：列表里左滑某条 = 删除（移入回收站「回收站」Tab，可恢复）；键盘侧删除也会同步过来')
             .fontSize(12)
             .fontColor(this.p().textSecondary)
             .width('100%')
@@ -856,6 +1231,63 @@ struct Index {
               .width('100%')
               .margin({ top: 6 })
           }
+        } else if (this.dialog === 'recycle') {
+          Text('回收站设置').fontSize(16).fontWeight(FontWeight.Bold).margin({ bottom: 6 })
+          Text('删除的剪贴项先放进回收站；超过保留天数后自动清理，永久保留则只能手动清空。')
+            .fontSize(11)
+            .fontColor(this.p().textSecondary)
+            .width('100%')
+            .margin({ bottom: 6 })
+          this.retentionRow(7, '保留 7 天')
+          this.retentionRow(15, '保留 15 天')
+          this.retentionRow(30, '保留 30 天（默认）')
+          this.retentionRow(90, '保留 90 天')
+          this.retentionRow(RETENTION_FOREVER, '永久保留（不自动清理）')
+          Text(`当前：${this.retentionText()}　回收站共 ${this.recycleItems.length} 条`)
+            .fontSize(12)
+            .fontColor(this.p().textSecondary)
+            .width('100%')
+            .margin({ top: 6 })
+          Text('回收站最多保存 5000 条，超出上限自动丢弃最旧的记录。')
+            .fontSize(11)
+            .fontColor(this.p().textSecondary)
+            .width('100%')
+            .margin({ top: 4 })
+        } else if (this.dialog === 'batch') {
+          Text('按批次恢复').fontSize(16).fontWeight(FontWeight.Bold).margin({ bottom: 4 })
+          Text('同一次删除的记录共用一个批次；点一行即可恢复该批次。')
+            .fontSize(11)
+            .fontColor(this.p().textSecondary)
+            .width('100%')
+            .margin({ bottom: 4 })
+          Scroll() {
+            Column() {
+              ForEach(this.batchIds, (b: string, i: number) => {
+                this.batchRow(b, this.batchCounts[i]);
+              }, (b: string) => b)
+            }
+            .width('100%')
+          }
+          .width('100%')
+          .constraintSize({ maxHeight: 260 })
+          .scrollBar(BarState.Auto)
+        } else if (this.dialog === 'recycleClear') {
+          Text('清空回收站').fontSize(16).fontWeight(FontWeight.Bold).margin({ bottom: 8 })
+          Text('确定要清空回收站吗？此操作不可撤销。')
+            .fontSize(13)
+            .fontColor(this.p().textPrimary)
+            .width('100%')
+          Row() {
+            this.filledButton('确定清空', this.p().danger, () => {
+              this.dialog = '';
+              this.doClearRecycle();
+            })
+            this.textButton('取消', this.p().textSecondary, () => {
+              this.dialog = '';
+            })
+          }
+          .width('100%')
+          .margin({ top: 12 })
         }
 
         Row() {
@@ -903,6 +1335,13 @@ struct Index {
                 }
               },
               {
+                value: '回收站设置',
+                action: () => {
+                  this.retentionDays = RecycleBinStore.retentionDays();
+                  this.dialog = 'recycle';
+                }
+              },
+              {
                 value: '皮肤',
                 action: () => {
                   this.dialog = 'theme';
@@ -933,7 +1372,7 @@ struct Index {
             .onClick(() => {
               this.curTab = 0;
             })
-          Text('GitHub')
+          Text('回收站')
             .fontSize(15)
             .fontColor(this.curTab === 1 ? this.p().barText : this.p().barTextDim)
             .textAlign(TextAlign.Center)
@@ -941,6 +1380,16 @@ struct Index {
             .padding({ top: 10, bottom: 10 })
             .onClick(() => {
               this.curTab = 1;
+              this.retentionDays = RecycleBinStore.retentionDays();
+            })
+          Text('GitHub')
+            .fontSize(15)
+            .fontColor(this.curTab === 2 ? this.p().barText : this.p().barTextDim)
+            .textAlign(TextAlign.Center)
+            .layoutWeight(1)
+            .padding({ top: 10, bottom: 10 })
+            .onClick(() => {
+              this.curTab = 2;
             })
         }
         .width('100%')
@@ -949,6 +1398,8 @@ struct Index {
 
         if (this.curTab === 0) {
           this.clipboardPage()
+        } else if (this.curTab === 1) {
+          this.recyclePage()
         } else {
           this.githubPage()
         }

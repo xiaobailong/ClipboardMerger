@@ -144,11 +144,49 @@ export class ClipboardStore {
   }
 
   static clear(): void {
+    // 清空前留一份快照：键盘进程清空时把它塞进 'clear' 事件，App 侧据此把内容移入回收站
+    // （两个进程的 preferences 不互通，见 PIT-039；'clear' 的 text 字段以前是空串，这里复用）
+    const before: ClipItem[] = ClipboardStore.cache.slice();
     ClipboardStore.cache = [];
     ClipboardStore.persist();
     ClipboardStore.publish();
-    Logger.d('clear: history cleared');
-    ClipboardStore.notifyChange('clear', '', Date.now());
+    Logger.d(`clear: history cleared, snapshot=${before.length}`);
+    ClipboardStore.notifyChange('clear', JSON.stringify(before), Date.now());
+  }
+
+  /**
+   * 恢复回收站条目到历史（对齐 Android ClipboardViewModel.restoreItemsToClipboard）：
+   * 按时间倒序插到最前；与当前最新一条相同则跳过。返回实际恢复条数。
+   */
+  static restoreItems(items: ClipItem[]): number {
+    if (items.length === 0) {
+      return 0;
+    }
+    const sorted: ClipItem[] = items.slice();
+    sorted.sort((a: ClipItem, b: ClipItem): number => b.timestamp - a.timestamp);
+    let restored: number = 0;
+    for (let i = 0; i < sorted.length; i++) {
+      const it: ClipItem = sorted[i];
+      const text: string = it.text;
+      if (text === undefined || text === null || text.trim().length === 0) {
+        continue;
+      }
+      if (ClipboardStore.cache.length > 0 && ClipboardStore.cache[0].text === text) {
+        continue;
+      }
+      const ts: number = it.timestamp > 0 ? it.timestamp : Date.now();
+      ClipboardStore.cache.unshift({ text: text, timestamp: ts });
+      restored++;
+    }
+    if (restored > 0) {
+      if (ClipboardStore.cache.length > MAX_ITEMS) {
+        ClipboardStore.cache = ClipboardStore.cache.slice(0, MAX_ITEMS);
+      }
+      ClipboardStore.persist();
+      ClipboardStore.publish();
+    }
+    Logger.d(`restoreItems: restored ${restored}/${items.length}`);
+    return restored;
   }
 
   /**

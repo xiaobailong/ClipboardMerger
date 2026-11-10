@@ -13,7 +13,7 @@
 
 ## 3. 目录结构
 - 构建：`scripts\build.bat`（默认含 git 提交/推送/打 tag/`gh release create`）、`scripts\build.bat release|setup|clean`、`scripts\clean.bat`、
-  `scripts\build-harmony.bat [release|clean]`（鸿蒙出包，默认不碰 git）、`scripts\deploy-harmony.bat [list|<x.hap>]`（鸿蒙装机：走 hdc 装最新签名 HAP + force-stop + 版本校验，**不碰 git**）；
+  `scripts\build-harmony.bat [release|clean]`（鸿蒙出包，默认不碰 git）、`scripts\build-harmony-signed.bat [clean|publish|help]`（鸿蒙**发布签名**出包：HAP + .app，release 模式 + `signature_fabu_pro` 材料 + `hap-sign-tool verify-app` 校验；`publish` 只把 **.hap** 上传 GitHub Release，`.app` 仅本地、已 gitignore；不做 git commit/push/tag）、`scripts\deploy-harmony.bat [list|<x.hap>]`（鸿蒙装机：走 hdc 装最新签名 HAP + force-stop + 版本校验，**不碰 git**）；
   日志 tee 包装器 `scripts\tools\tee-log.ps1`（逐行：先写文件 → 再回显控制台）。
 - 日志 `build\logs\build_<ts>.log`；APK `android\build\outputs\apk\debug\` + 仓库根副本；版本号真源 `android\version.properties`。
 - 代码 `android\app\src\main\java\com\example\clipboardmerger\`；知识库 `memory-bank\`；临时文件 `tmp\`（gitignored）。

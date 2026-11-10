@@ -49,13 +49,14 @@ harmony/
 | 通知 + 悬浮气泡提醒（见 `PIT-031/032/033`） | 未移植 | 那套是绕开 Android 通知系统的手段，鸿蒙机制不同，按需再定 |
 | `version.properties` 管版本 | `AppScope/app.json5` 的 versionName / versionCode | 两套构建各自管版本（发鸿蒙包时手工对齐） |
 
-## 构建脚本 `build-harmony.bat`（在 scripts/ 目录）
+## 构建脚本（在 scripts/ 目录）
 
 | 命令 | 作用 |
 | --- | --- |
 | `scripts\build-harmony.bat` | 只构建：`hvigorw assembleHap` → 产物收成 `build\harmony\JianJi-HarmonyOS-v<版本>-<build>.hap`（**不动 git**） |
 | `scripts\build-harmony.bat release` | 递增鸿蒙版本号 → 构建 → `git commit/push` → tag `harmony-v<版本>` → `gh release create` 上传 HAP |
 | `scripts\build-harmony.bat clean` | 清理 `harmony\.hvigor`、`harmony\entry\build`、`build\harmony`、根目录 `*.hap` |
+| `scripts\build-harmony-signed.bat` | **发布签名出包（HAP + .app）**：检查 `signature_fabu_pro` 材料 → `build-info.js release` → `hvigorw assembleHap` + `assembleApp`（`buildMode=release`）→ HAP 收成 `build\harmony\JianJi-HarmonyOS-v<版本>-<build>-release.hap`、.app 收成同名 `-release.app` 并**额外拷一份到仓库根**（文件名带版本号）→ `hap-sign-tool verify-app` 分别校验；加 `clean` 先清 harmony 缓存；加 **`publish`** 时只把 **.hap** 上传 GitHub Release（`.app` 仅本地、已 gitignore，永不入 git / 不上传）；不做 git commit/push/tag |
 
 - 日志：`build\logs\harmony_<ts>.log`（复用 `scripts\tools\tee-log.ps1`，逐行先落盘再回显，同 `scripts\build.bat`）
 - 版本号真源：`harmony\AppScope\app.json5`（工具 `scripts\tools\harmony-version.js`）；与 Android 的 `version.properties` **各自独立**

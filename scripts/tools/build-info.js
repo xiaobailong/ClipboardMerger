@@ -3,8 +3,11 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-const root = path.resolve(__dirname, '..');
+// __dirname = <repo>/scripts/tools ⇒ 仓库根要上两级（原来只上到 scripts/，导致写文件 ENOENT、构建信息一直没注入）
+const root = path.resolve(__dirname, '..', '..');
 const out = path.join(root, 'harmony', 'entry', 'src', 'main', 'ets', 'model', 'BuildInfo.ets');
+// 可选参数：release / debug（build-harmony.bat 不带参数 ⇒ debug）
+const buildMode = process.argv[2] === 'release' ? 'release' : 'debug';
 
 let commit = 'unknown';
 try {
@@ -23,8 +26,8 @@ const content = `/**
  */
 export const BUILD_TIME: string = '${time}';
 export const GIT_COMMIT: string = '${commit}';
-export const BUILD_TYPE: string = 'HarmonyOS · debug 签名';
+export const BUILD_TYPE: string = 'HarmonyOS · ${buildMode === 'release' ? 'release 签名' : 'debug 签名'}';
 `;
 
-fs.writeFileSync(out, content, 'utf8');
+fs.writeFileSync(out, content.replace(/\n/g, '\r\n'), 'utf8');
 console.log(`BuildInfo injected: ${time} / ${commit}`);

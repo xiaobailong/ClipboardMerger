@@ -195,3 +195,12 @@
 - 涉及文件: `model/ClipboardStore.ets`、`pages/Index.ets`、`InputMethodExtensionAbility/model/KeyboardController.ets`
 - 验证: `BUILD SUCCESSFUL`（HAP 14:36:57）+ `deploy-harmony.bat` 装机 → `install bundle successfully` / 版本校验 `1.100`；产物 `…/ClipboardStore.ts`、`modules.abc`、HAP 内均含 `dedupeByText / mergeItems / parseSnapshot`。真机判据: 开着 App 复制两条不同文字 → 列表各一条；反复切后台回前台 → 条数不增长
 - 相关: `ISSUE-011`、`PIT-050`　- 首次记录: 2026-10-07 ／ 最近复核: 2026-10-07（编译 + 装机已过，真机复验待做）
+## ISSUE-013 鸿蒙构建信息从未注入：`build-info.js` 把仓库根算成 `scripts\` ⇒ 写文件 ENOENT，BuildInfo 永远停在旧时间
+- 状态: 已修复　- 复发判据: `node scripts/tools/build-info.js release` 期望输出 `BuildInfo injected: <今天时间> / <短哈希>`；若再出现 `ENOENT .../scripts/harmony/...` 或 `BuildInfo.ets` 的 `BUILD_TIME` 不随构建变化，即复发
+- 症状: 「关于」弹框里构建时间/提交长期是 `2026-10-07 22:43:16` / `2fb50c8`，但功能代码是新的；`build-harmony.bat` 走到 `node tools\build-info.js` 时紧跟一段 ENOENT 堆栈（`open '...\scripts\harmony\entry\src\main\ets\model\BuildInfo.ets'`）。
+- 根因: `scripts/tools/build-info.js` 用 `path.resolve(__dirname, '..')` 当仓库根 —— `__dirname` 已经是 `scripts/tools`，上溯一级只到 `scripts/`，于是往不存在的 `scripts\harmony\...` 写 ⇒ ENOENT；脚本非 0 退出，但 `build-harmony.bat` 没检查这一步的 errorlevel，构建照常继续 ⇒ 一路「成功」，构建信息却永远是旧的。
+- 修法: ①`path.resolve(__dirname, '..', '..')`；②支持可选参数 `release`（`node tools/build-info.js release` → `BUILD_TYPE = 'HarmonyOS · release 签名'`，不带参数仍是 debug）；③写文件统一 CRLF（与其余 `.ets` 一致）。证据: `node scripts/tools/build-info.js release` → `BuildInfo injected: 2026-11-10 21:03:06 / 8b43fd3`，`BuildInfo.ets` 三行全部更新；release 包 `pack.info` 里 `version 1.101.0 / 20100`、编译缓存 `BuildInfo.ts` 含 `release 签名`。
+- 反例 / 易误判: ①以为「关于页时间是设备/时区问题」（实际文件从没被写过）；②以为 `build-harmony.bat` 会因 ENOENT 失败（bat 不检查该步 errorlevel，日志里只是一段红字继续往下跑）。
+- 涉及文件: `scripts/tools/build-info.js`、`harmony/entry/src/main/ets/model/BuildInfo.ets`（生成物）
+- 相关: `PIT-036`　- 首次记录: 2026-11-10 ／ 最近复核: 2026-11-10（release 出包时复现并修复，已验证注入）
+

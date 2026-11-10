@@ -3,6 +3,7 @@
 *.aab
 *.ap_
 *.aab_
+*.app
 
 # Android Studio / IntelliJ IDEA
 .idea/

@@ -58,6 +58,7 @@
 | 鸿蒙 IME Kit 无「取选中文本/删选区」⇒ `deleteForward` + `selectionChange` | `PIT-049` | P |
 | 鸿蒙版：App 里清空/左滑删除不同步到键盘（App→IME 单向缺失） | `ISSUE-011`、`PIT-050` | I + P |
 | 鸿蒙版：App 侧历史成片重复（快照合并用循环 `addText`，只挡最新一条） | `ISSUE-012` | I |
+| 鸿蒙「关于」构建时间/提交一直是旧的（`build-info.js` 路径写错 ⇒ ENOENT） | `ISSUE-013` | I |
 | 公共事件是广播：自己发的事件本进程也收 ⇒ 事件必须带 `src` 过滤 | `PIT-050` | P |
 | 去掉 App 内输入法切换入口/弹框（状态条改只读） | `ADR-015`、`ISSUE-008` | D + I |
 | Android 版皮肤切换（App ⋮→皮肤 / 键盘 ⚙→面板内「皮肤设置」单选）、键盘 ▼ 收起 | `ADR-017` | D |
@@ -66,5 +67,9 @@
 | javac「源值 8 已过时」；升 Java 目标 11/17 ⇒ AGP `JdkImageTransform` + jlink 挂 | `PIT-054` | P |
 | 构建工具链统一 JDK 17（daemon / `JAVA_HOME` / Java&Kotlin 目标 = 17，删 `-Xlint:-options`） | `ADR-018` | D |
 | 浅色皮肤下复用白色图标 ⇒ 顶栏「⋮」隐形 / 勾选框颜色不搭 | `PIT-051` | P |
+| 鸿蒙版回收站怎么存（App 进程 + 键盘侧事件带快照） | `ADR-019` | D |
+| 鸿蒙发布签名出包（HAP + .app / 根副本带版本号 / 不碰 git） | `ADR-020` | D |
+
+
 
 
