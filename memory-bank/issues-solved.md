@@ -203,4 +203,13 @@
 - 反例 / 易误判: ①以为「关于页时间是设备/时区问题」（实际文件从没被写过）；②以为 `build-harmony.bat` 会因 ENOENT 失败（bat 不检查该步 errorlevel，日志里只是一段红字继续往下跑）。
 - 涉及文件: `scripts/tools/build-info.js`、`harmony/entry/src/main/ets/model/BuildInfo.ets`（生成物）
 - 相关: `PIT-036`　- 首次记录: 2026-11-10 ／ 最近复核: 2026-11-10（release 出包时复现并修复，已验证注入）
+## ISSUE-014 鸿蒙包上传 AGC 被拒：`VersionCode: 20100` 低于已发布测试版本 `100013`
+- 状态: 已修复　- 复发判据: `node scripts/tools/harmony-version.js code` 期望 ≥ `1020001`（且恒大于 `100013`）；若 `pack.info` 的 `version.code` 又回到 5 位数（如 `20200`）即复发
+- 症状: AGC「软件版本 → 去选择」上传 HAP 时报「此软件包版本号（VersionCode: 20100）低于发布过的测试版本（VersionCode: 100013），已安装用户可能无法更新至此测试版本」。
+- 根因: `scripts/tools/bump-version-harmony.ps1` 用 `versionCode = major*10000 + minor*100 + patch` 由 versionName 推导，1.x 系列上限只有 `2xxxx`；AGC 上历史测试版本已到 `100013`（更早本机装机版还有 `1000012`）⇒ 旧公式永远追不上，只有改基数才能越过。
+- 修法: 公式加百万基数 → `versionCode = 1000000 + major*10000 + minor*100 + patch`（`bump-version-harmony.ps1:14` 注释同步写明「抬历史包袱」）；跑一次 bump 得 `OK=1.101.0->2.0.1|1020001`（minor 101 ≥ 100 进位到 major 2），`app.json5` 写成 `versionName "2.0.1" / versionCode 1020001`。
+- 验证: `node scripts/tools/harmony-version.js code` → `1020001`；`scripts\build-harmony-signed.bat` → 两次 `BUILD SUCCESSFUL` + HAP `profile type is: release` + 两处 `verify-app success`；`harmony\entry\build\default\outputs\default\pack.info` 内 `"version":{"code":1020001,"name":"2.0.1"}`；产物 `build\harmony\JianJi-HarmonyOS-v2.0.1-1020001-release.hap`（246,621 B）+ `.app`（110,739 B，仓库根有同名校验副本）。
+- 反例 / 易误判: ①以为改 versionName 就够（AGC 只比 versionCode）；②只手工改 `app.json5` 的 versionCode —— 下次 `build-harmony.bat` 跑 bump 会用旧公式重算覆盖，立刻复发；③以为 1.x 靠 patch 递增能长到 6 位数。
+- 涉及文件: `scripts/tools/bump-version-harmony.ps1`、`harmony/AppScope/app.json5`
+- 相关: `ADR-021`、`ISSUE-002`　- 首次记录: 2026-11-10 ／ 最近复核: 2026-11-10（出包 + 签名校验已过，待 AGC 上传复验）
 

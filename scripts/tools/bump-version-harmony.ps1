@@ -1,4 +1,4 @@
-# =============================================================================
+﻿# =============================================================================
 #  bump-version-harmony.ps1 - bump the patch of HarmonyOS versionName (called by build-harmony.bat)
 #
 #  WHY THIS FILE EXISTS
@@ -11,7 +11,10 @@
 #  Every build bumps the patch (+1), carry at 100:
 #    x.y.99 -> x.(y+1).0
 #    x.99.99 -> (x+1).0.0
-#  "versionCode" is kept in sync as: major*10000 + minor*100 + patch
+#  "versionCode" is kept in sync as: 1000000 + major*10000 + minor*100 + patch
+#  （基数 1000000 = 抬历史包袱：AGC 已发布过 versionCode 100013，早期本机装机版
+#    还有 1000012，旧公式 major*10000+minor*100+patch 永远追不上 ⇒ 一律加百万基数，
+#    既保证单调递增，也保证 patch/minor 进位规则不变）
 #
 #  USAGE
 #    powershell -NoProfile -ExecutionPolicy Bypass -File scripts\tools\bump-version-harmony.ps1
@@ -55,7 +58,7 @@ try {
     }
 
     $new = "$major.$minor.$patch"
-    $vcode = $major * 10000 + $minor * 100 + $patch
+    $vcode = 1000000 + $major * 10000 + $minor * 100 + $patch
 
     # Write app.json5
     $out = $text -replace '"versionName"\s*:\s*"[\d.]+"', ('"versionName": "' + $new + '"')

@@ -224,3 +224,12 @@
 
 - 发布实测（2026-11-10）: 源码提交 `580bb05` 推 `main`，tag `harmony-v1.101.0` → `580bb05`（远端一致）；`build-harmony-signed.bat publish` 建 Release https://github.com/xiaobailong/ClipboardMerger/releases/tag/harmony-v1.101.0 ，附件**只有** `JianJi-HarmonyOS-v1.101.0-20100-release.hap`（`.app` 未上传、未入 git，本地 110KB 留仓库根与 `build\harmony`）。同时修正发布后列附件的 jq：`--json assets --jq ".assets[].name"`（原 `.[]` 会报 `expected an object but got: array`）。
 
+## ADR-021 鸿蒙 `versionCode` 统一抬基数 `1000000`（越过 AGC 历史版本 100013）
+- 日期: 2026-11-10 | 状态: 已采纳
+- 背景: AGC 拒绝上传 `versionCode 20100`，理由是低于已发布测试版本 `100013`（见 `ISSUE-014`）。鸿蒙 `versionCode` 必须严格单调且大于所有历史值，而旧公式 `major*10000 + minor*100 + patch` 在 1.x 上最多到 `2xxxx`。
+- 决策: 保持 versionName 语义不变（每包 patch +1、minor/patch 满 100 进位），只把 versionCode 抬基数：`versionCode = 1000000 + major*10000 + minor*100 + patch`。真源仍是 `harmony/AppScope/app.json5`，由 `scripts/tools/bump-version-harmony.ps1` 写入。
+- 理由: 加基数一次性越过历史值（`100013` / `1000012`），进位规则、`JianJi-HarmonyOS-v<ver>-<code>` 命名、AGC 侧比较逻辑都不用动。
+- 备选与为何不选: ①把 versionName 跳到 10.x 让旧公式越过 100013 —— versionName 给人看（Android 端 `1.94.0`），跳档会打乱两端对齐；②只手工改 `app.json5` 的 versionCode —— 下次 bump 用旧公式覆盖，必复发；③versionCode 改纯 `+1` 递增 —— 与 versionName 脱钩，得额外状态文件，且脚本无法从 JSON 推。
+- 影响与约束: ①鸿蒙包 versionCode 变 7 位（`2.0.1` → `1020001`），工具只比大小，无副作用；②Android 端不受影响（`bump_version.ps1` + `build.gradle.kts` 各自算）；③本次 bump 顺带把 versionName 从 `1.101.0` 带到 `2.0.1`（minor 101 ≥ 100 进位到 major 2）；④若日后 AGC 出现更大历史值（≥ 百万），继续抬基数而不是改 versionName。
+- 验证: 见 `ISSUE-014`（`pack.info` = `code 1020001 / name 2.0.1`，HAP `.app` 均校验通过）。
+
