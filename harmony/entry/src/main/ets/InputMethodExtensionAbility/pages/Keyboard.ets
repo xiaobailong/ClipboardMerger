@@ -538,16 +538,13 @@ struct Keyboard {
   }
 
   /**
-   * 设置底部状态栏文字，2.5 秒后自动恢复为记录数。
+   * 设置底部状态栏文字：**一直保留到下一次操作**。
+   * 之前这里挂了 2.5 秒后自动恢复成记录数的定时器 ⇒ 点「全部粘贴」看到「✅ 已粘贴 N 条」
+   * 转眼就被改回记录数（用户并没有触发别的动作），属于无端自变；现在只由操作驱动。
    * 空串 = 立即恢复为默认记录数。
    */
   private setStatus(text: string): void {
     this.statusText = text;
-    if (text !== '') {
-      setTimeout(() => {
-        this.statusText = '';
-      }, 2500);
-    }
   }
 
   /** 左滑出来的「删除」按钮（键盘面板的每一条历史） */
@@ -682,153 +679,157 @@ struct Keyboard {
 
       if (this.showSettings) {
         Text('')
-      } else if (this.showRecycle) {
-        // 面板内回收站：按钮与功能对齐 App 回收站（两行 7 个按钮 + 状态行 + 列表）
+      } else if (this.showRecycle && this.showBatchPick) {
+        // 按批次恢复：点一行即恢复该批次（对齐 App 的「恢复批次」弹层）
         Column() {
           Row() {
-            this.imeKey('全选', 0, () => {
-              this.selectAllRecycle();
-            })
-            this.imeKey('取消全选', 1, () => {
-              this.deselectAllRecycle();
-            })
-            this.imeKey('恢复选中', 0, () => {
-              this.restoreSelectedRecycle();
+            Text('按批次恢复（点一行即恢复该批次）')
+              .fontSize(11)
+              .fontColor(this.p().imeStatusFg)
+              .layoutWeight(1)
+            this.imeKey('返回', 1, () => {
+              this.showBatchPick = false;
             })
           }
           .width('100%')
-          .padding({ left: 8, right: 8, top: 4, bottom: 1 })
+          .padding({ left: 8, right: 8, bottom: 2 })
           .alignItems(VerticalAlign.Center)
-
-          Row() {
-            this.imeKey('恢复全部', 0, () => {
-              this.restoreAllRecycle();
-            })
-            this.imeKey('恢复最近', 0, () => {
-              this.restoreRecentRecycle();
-            })
-            this.imeKey('恢复批次', 0, () => {
-              this.openBatchPick();
-            })
-            this.imeKey(this.confirmClear ? '确认清空' : '清空回收站', 4, () => {
-              this.clearRecycleTap();
-            })
+          List({ space: 4 }) {
+            ForEach(this.batchIds, (batchId: string, idx: number) => {
+              ListItem() {
+                Row() {
+                  Text(batchId)
+                    .fontSize(12)
+                    .fontColor(this.p().imeItemFg)
+                    .layoutWeight(1)
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  Text(`${this.batchCounts[idx]} 条`)
+                    .fontSize(10)
+                    .fontColor(this.p().imeStatusFg)
+                }
+                .width('100%')
+                .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+                .backgroundColor(this.p().imeItemBg)
+                .borderRadius(8)
+                .onClick(() => {
+                  this.restoreBatch(batchId);
+                })
+              }
+            }, (batchId: string) => batchId)
           }
           .width('100%')
-          .padding({ left: 8, right: 8, top: 1, bottom: 2 })
-          .alignItems(VerticalAlign.Center)
-
-          Text(this.recycleBarText())
-            .fontSize(11)
-            .fontColor(this.p().imeStatusFg)
-            .width('100%')
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .padding({ left: 10, right: 10, top: 4, bottom: 4 })
-
-          if (this.showBatchPick) {
-            // 按批次恢复：点一行即恢复该批次（对齐 App 的「恢复批次」弹层）
+          .layoutWeight(1)
+          .padding({ left: 8, right: 8 })
+        }
+        .width('100%')
+        .layoutWeight(1)
+      } else if (this.showRecycle) {
+        // 面板内回收站：两行操作按钮 + 状态行做成**列表表头**，跟着列表一起滚
+        // ⇒ 平铺时列表吃满内容区（常驻按钮会挤掉大半可视区），要操作用力往上滚回顶部即可
+        List({ space: 4 }) {
+          ListItem() {
             Column() {
               Row() {
-                Text('按批次恢复（点一行即恢复该批次）')
-                  .fontSize(11)
-                  .fontColor(this.p().imeStatusFg)
-                  .layoutWeight(1)
-                this.imeKey('返回', 1, () => {
-                  this.showBatchPick = false;
+                this.imeKey('全选', 0, () => {
+                  this.selectAllRecycle();
+                })
+                this.imeKey('取消全选', 1, () => {
+                  this.deselectAllRecycle();
+                })
+                this.imeKey('恢复选中', 0, () => {
+                  this.restoreSelectedRecycle();
                 })
               }
               .width('100%')
-              .padding({ left: 8, right: 8, bottom: 2 })
+              .padding({ top: 4, bottom: 1 })
               .alignItems(VerticalAlign.Center)
-              List({ space: 4 }) {
-                ForEach(this.batchIds, (batchId: string, idx: number) => {
-                  ListItem() {
-                    Row() {
-                      Text(batchId)
-                        .fontSize(12)
-                        .fontColor(this.p().imeItemFg)
-                        .layoutWeight(1)
-                        .maxLines(1)
-                        .textOverflow({ overflow: TextOverflow.Ellipsis })
-                      Text(`${this.batchCounts[idx]} 条`)
-                        .fontSize(10)
-                        .fontColor(this.p().imeStatusFg)
-                    }
-                    .width('100%')
-                    .padding({ left: 10, right: 10, top: 6, bottom: 6 })
-                    .backgroundColor(this.p().imeItemBg)
-                    .borderRadius(8)
-                    .onClick(() => {
-                      this.restoreBatch(batchId);
-                    })
-                  }
-                }, (batchId: string) => batchId)
+
+              Row() {
+                this.imeKey('恢复全部', 0, () => {
+                  this.restoreAllRecycle();
+                })
+                this.imeKey('恢复最近', 0, () => {
+                  this.restoreRecentRecycle();
+                })
+                this.imeKey('恢复批次', 0, () => {
+                  this.openBatchPick();
+                })
+                this.imeKey(this.confirmClear ? '确认清空' : '清空回收站', 4, () => {
+                  this.clearRecycleTap();
+                })
               }
               .width('100%')
-              .layoutWeight(1)
-              .padding({ left: 8, right: 8 })
-            }
-            .width('100%')
-            .layoutWeight(1)
-          } else if (this.recycleItems.length === 0) {
-            Column() {
-              Text('回收站是空的')
-                .fontSize(13)
-                .fontColor(this.p().imeStatusFg)
-              Text('键盘侧删除/清空的内容会留在这里，App 端拿不到数据也能找回')
+              .padding({ top: 1, bottom: 2 })
+              .alignItems(VerticalAlign.Center)
+
+              Text(this.recycleBarText())
                 .fontSize(11)
                 .fontColor(this.p().imeStatusFg)
-                .margin({ top: 4 })
-                .textAlign(TextAlign.Center)
+                .width('100%')
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+                .padding({ left: 2, right: 2, top: 4, bottom: 2 })
             }
             .width('100%')
-            .layoutWeight(1)
-            .justifyContent(FlexAlign.Center)
-            .padding({ left: 20, right: 20 })
+          }
+
+          if (this.recycleItems.length === 0) {
+            ListItem() {
+              Column() {
+                Text('回收站是空的')
+                  .fontSize(13)
+                  .fontColor(this.p().imeStatusFg)
+                Text('键盘侧删除/清空的内容会留在这里，App 端拿不到数据也能找回')
+                  .fontSize(11)
+                  .fontColor(this.p().imeStatusFg)
+                  .margin({ top: 4 })
+                  .textAlign(TextAlign.Center)
+              }
+              .width('100%')
+              .height(140)
+              .justifyContent(FlexAlign.Center)
+              .padding({ left: 12, right: 12 })
+            }
           } else {
-            List({ space: 4 }) {
-              ForEach(this.recycleItems, (item: RecycleItem) => {
-                ListItem() {
-                  Row() {
-                    Text(this.isRecycleSelected(item.id) ? '☑' : '☐')
-                      .fontSize(16)
-                      .fontColor(this.isRecycleSelected(item.id) ? this.p().imeMark : this.p().imeStatusFg)
-                      .padding({ right: 8 })
-                    Column() {
-                      Text(item.text)
-                        .fontSize(13)
-                        .fontColor(this.p().imeItemFg)
-                        .maxLines(3)
-                        .textOverflow({ overflow: TextOverflow.Ellipsis })
-                      Text(`${this.fmtDeleted(item.deletedAt)} 删除 · ${item.batchId}`)
-                        .fontSize(10)
-                        .fontColor(this.p().imeStatusFg)
-                        .margin({ top: 2 })
-                        .maxLines(1)
-                        .textOverflow({ overflow: TextOverflow.Ellipsis })
-                    }
-                    .layoutWeight(1)
-                    .alignItems(HorizontalAlign.Start)
+            ForEach(this.recycleItems, (item: RecycleItem) => {
+              ListItem() {
+                Row() {
+                  Text(this.isRecycleSelected(item.id) ? '☑' : '☐')
+                    .fontSize(16)
+                    .fontColor(this.isRecycleSelected(item.id) ? this.p().imeMark : this.p().imeStatusFg)
+                    .padding({ right: 8 })
+                  Column() {
+                    Text(item.text)
+                      .fontSize(13)
+                      .fontColor(this.p().imeItemFg)
+                      .maxLines(3)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    Text(`${this.fmtDeleted(item.deletedAt)} 删除 · ${item.batchId}`)
+                      .fontSize(10)
+                      .fontColor(this.p().imeStatusFg)
+                      .margin({ top: 2 })
+                      .maxLines(1)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis })
                   }
-                  .width('100%')
-                  .padding({ left: 10, right: 10, top: 6, bottom: 6 })
-                  .backgroundColor(this.isRecycleSelected(item.id) ? this.p().imeItemSelBg : this.p().imeItemBg)
-                  .borderRadius(8)
-                  .onClick(() => {
-                    this.toggleRecycleSelect(item.id);
-                  })
+                  .layoutWeight(1)
+                  .alignItems(HorizontalAlign.Start)
                 }
-                .swipeAction({ end: { builder: () => { this.recyclePurge(item); } } })
-              }, (item: RecycleItem) => `${item.id}_${item.deletedAt}`)
-            }
-            .width('100%')
-            .layoutWeight(1)
-            .padding({ left: 8, right: 8, top: 2 })
+                .width('100%')
+                .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+                .backgroundColor(this.isRecycleSelected(item.id) ? this.p().imeItemSelBg : this.p().imeItemBg)
+                .borderRadius(8)
+                .onClick(() => {
+                  this.toggleRecycleSelect(item.id);
+                })
+              }
+              .swipeAction({ end: { builder: () => { this.recyclePurge(item); } } })
+            }, (item: RecycleItem) => `${item.id}_${item.deletedAt}`)
           }
         }
         .width('100%')
         .layoutWeight(1)
+        .padding({ left: 8, right: 8, top: 2 })
       } else if (this.items.length === 0) {
         Column() {
           Text('暂无剪贴板记录')
