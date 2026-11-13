@@ -6,6 +6,7 @@ import { EventBus, HistEvent, SRC_APP, SRC_IME } from '../../model/EventBus';
 import { Logger } from '../../model/Logger';
 import { ImeSettings } from '../../model/ImeSettings';
 import { ThemeStore } from '../../model/Theme';
+import { RecycleBinStore } from '../../model/RecycleBin';
 
 /** 输入法面板要加载的页面（路径相对 ets 目录，与 main_pages.json 保持一致） */
 const PANEL_PAGE: string = 'InputMethodExtensionAbility/pages/Keyboard';
@@ -45,6 +46,9 @@ export class KeyboardController {
     ImeSettings.setLastSwitch('IME 进程已创建 · ' + new Date().toTimeString().substring(0, 8));
     ThemeStore.init(context);
     ImeSettings.init(context);
+    // 键盘进程自己的回收站（独立沙箱）：键盘侧删除/清空的内容在这里留底，
+    // App 进程收不到同步事件（进程没起来/事件丢失）时也能从键盘这份找回（PIT-039）
+    RecycleBinStore.init(context);
     // App → 键盘 的历史同步：App 里「清空全部」「左滑删除」等操作要同步过来
     // （只处理 src=app 的事件，避免处理自己发的而回声）
     EventBus.subscribe((e: HistEvent) => {
@@ -324,6 +328,15 @@ export class KeyboardController {
       return;
     }
     if (e.op === 'clear') {
+      // App 侧清空：键盘这份同样留底进回收站（App 自己那份由 App 进程负责入库）
+      if (ClipboardStore.getItems().length > 0) {
+        RecycleBinStore.moveToRecycleBin(ClipboardStore.getItems().slice(), 'ime');
+      }
+      const snap: ClipItem[] = ClipboardStore.parseSnapshot(e.text);
+      if (snap.length > 0) {
+        // moveToRecycleBin 按内容去重，快照与本地重复的不会重复入库
+        RecycleBinStore.moveToRecycleBin(snap, 'ime');
+      }
       ClipboardStore.clear();
       Logger.d('appSync: clear ← App');
       return;
@@ -346,6 +359,8 @@ export class KeyboardController {
         }
       }
       if (hit >= 0) {
+        // 键盘这份删之前也留底进回收站（App 侧删的，App 自己会入库；这里保键盘沙箱也有一份）
+        RecycleBinStore.moveToRecycleBin([arr[hit]], 'ime');
         ClipboardStore.removeAt(hit);
         Logger.d(`appSync: remove ← App (index=${hit})`);
       } else {

@@ -47,10 +47,15 @@ title 剪集 HarmonyOS 发布签名出包
 REM ============================================
 REM  剪集 鸿蒙「发布签名」出包脚本（HAP + .app；只有 .hap 会通过 gh 上传）
 REM
-REM  用法: build-harmony-signed.bat          增量出包
+REM  用法: build-harmony-signed.bat          增量出包（**自动 +1 版本号**）
 REM        build-harmony-signed.bat clean    先清 harmony 构建产物，再全量出包
 REM        build-harmony-signed.bat publish  出包后把 .hap 上传到 GitHub Release（.app 仅本地）
+REM        build-harmony-signed.bat nobump   出包但不递增版本号（本地重复调试用）
 REM        build-harmony-signed.bat help     显示帮助
+REM
+REM  版本号: 每次出包都调 tools\bump-version-harmony.ps1 把 app.json5 的 versionName
+REM          patch +1、versionCode 同步 +1（AGC 拒绝重复版本号的测试版本，见 2026-11-13 提交被拒）。
+REM          要提测上架时把改过的 harmony\AppScope\app.json5 一起提交。
 REM
 REM  签名来源: %SIGN_DIR% 下的 .p12 / .cer / .p7b
 REM            （密钥别名与加密口令在 harmony\build-profile.json5 的 signingConfigs 里，
@@ -65,6 +70,7 @@ REM ============================================
 set "HARMONY_DIR=%~dp0..\harmony"
 set "HAP_OUT=%~dp0..\build\harmony"
 set "VER_TOOL=%~dp0tools\harmony-version.js"
+set "BUMP_PS=%~dp0tools\bump-version-harmony.ps1"
 set "BUILD_INFO=%~dp0tools\build-info.js"
 set "BUILD_PROFILE=%HARMONY_DIR%\build-profile.json5"
 REM 规范化路径（否则日志里会打印 scripts\..\build\harmony 这种带 .. 的形式）
@@ -74,29 +80,42 @@ for %%i in ("%BUILD_PROFILE%") do set "BUILD_PROFILE=%%~fi"
 if not defined SIGN_DIR set "SIGN_DIR=D:\Tools\DevTools\hmos\signature_fabu_pro"
 set "_CM_DO_CLEAN="
 set "_CM_DO_PUBLISH="
+set "_CM_NO_BUMP="
+set "_CM_BUMP_NOTE="
 set "GH_EXE=C:\Program Files\GitHub CLI\gh.exe"
 set "GH_REPO=xiaobailong/ClipboardMerger"
 
-if /i "%~1"=="help" goto :usage
-if /i "%~1"=="-h"   goto :usage
-if /i "%~1"=="/?"   goto :usage
+:parse_args
+if "%~1"=="" goto :args_done
+if /i "%~1"=="help"  goto :usage
+if /i "%~1"=="-h"    goto :usage
+if /i "%~1"=="/?"    goto :usage
 if /i "%~1"=="clean"   set "_CM_DO_CLEAN=1"
 if /i "%~1"=="publish" set "_CM_DO_PUBLISH=1"
+if /i "%~1"=="nobump"  set "_CM_NO_BUMP=1"
+if /i "%~1"=="no-bump" set "_CM_NO_BUMP=1"
+shift
+goto :parse_args
+:args_done
 
 goto :main
 
 :usage
 echo.
 echo 用法:
-echo   build-harmony-signed.bat          增量出包（release 模式 + 发布签名，出 HAP + .app）
-echo   build-harmony-signed.bat clean    先清 harmony 构建产物，再全量出包
+echo   build-harmony-signed.bat          增量出包（release 模式 + 发布签名，出 HAP + .app，版本号 +1）
+echo   build-harmony-signed.bat clean    先清 harmony 构建产物，再全量出包（版本号 +1）
 echo   build-harmony-signed.bat publish  出包后只把 .hap 上传到 GitHub Release（.app 仅本地）
+echo   build-harmony-signed.bat nobump   出包但不递增版本号（本地重复调试用）
 echo   build-harmony-signed.bat help     显示本帮助
+echo.
+echo 参数可组合，例如: build-harmony-signed.bat clean publish
 echo.
 echo 签名目录: %SIGN_DIR%（可 set "SIGN_DIR=..." 覆盖）
 echo 产物目录: build\harmony（.app 另拷一份到仓库根）
 echo .app 已 gitignore：不会进 git，也不会被 gh 上传；gh 只上传 .hap。
-echo 本脚本不做 git commit / push / tag。
+echo 本脚本不做 git commit / push / tag；但每次出包会改写 harmony\AppScope\app.json5 的版本号，
+echo 提测/上架前记得把 app.json5 一起提交（AGC 不接受重复版本号的测试版本）。
 echo.
 if defined _CM_NO_PAUSE exit /b 0
 pause
@@ -113,7 +132,7 @@ echo  构建模式: release（assembleHap）
 echo.
 
 if not defined _CM_DO_CLEAN goto :after_clean
-echo [0/7] 清理 harmony 构建产物...
+echo [0/8] 清理 harmony 构建产物...
 for %%d in ("%HARMONY_DIR%\.hvigor" "%HARMONY_DIR%\build" "%HARMONY_DIR%\entry\build") do (
     if exist "%%~d" rmdir /s /q "%%~d" 2>nul
 )
@@ -122,7 +141,7 @@ echo       完成。
 
 echo.
 echo ============================================
-echo  [1/7] 检查签名材料与签名配置
+echo  [1/8] 检查签名材料与签名配置
 echo ============================================
 if not exist "%SIGN_DIR%" (
     echo [错误] 签名目录不存在: %SIGN_DIR%
@@ -172,7 +191,7 @@ echo       签名配置已就绪。
 
 echo.
 echo ============================================
-echo  [2/7] 定位鸿蒙工具链（hvigor / node / SDK）
+echo  [2/8] 定位鸿蒙工具链（hvigor / node / SDK）
 echo ============================================
 call :locate
 if errorlevel 1 exit /b 1
@@ -181,7 +200,21 @@ echo       SDK         = %DEVECO_SDK_HOME%
 
 echo.
 echo ============================================
-echo  [3/7] 注入构建信息（build-info.js release）
+echo  [3/8] 递增鸿蒙版本号（每次出包 +1，AGC 不接受重复版本号）
+echo ============================================
+if defined _CM_NO_BUMP (
+    set "_CM_BUMP_NOTE=（未递增 · nobump）"
+    echo       [跳过] 指定了 nobump，沿用当前版本号
+    goto :after_bump
+)
+call :bump_version
+if errorlevel 1 exit /b 1
+set "_CM_BUMP_NOTE=（已 +1 递增）"
+:after_bump
+
+echo.
+echo ============================================
+echo  [4/8] 注入构建信息（build-info.js release）
 echo ============================================
 if not exist "%BUILD_INFO%" (
     echo [警告] 缺少 %BUILD_INFO%，跳过构建信息注入
@@ -195,7 +228,7 @@ if not exist "%BUILD_INFO%" (
 
 echo.
 echo ============================================
-echo  [4/7] hvigorw assembleHap（release + 发布签名）
+echo  [5/8] hvigorw assembleHap（release + 发布签名）
 echo ============================================
 pushd "%HARMONY_DIR%"
 if exist "%HARMONY_DIR%\hvigorw.bat" (
@@ -214,7 +247,7 @@ popd
 
 echo.
 echo ============================================
-echo  [5/7] 收集 HAP
+echo  [6/8] 收集 HAP
 echo ============================================
 set "H_VNAME="
 set "H_VCODE="
@@ -252,7 +285,7 @@ echo       已复制到: %HAP_OUT%\%HAP_NAME%
 
 echo.
 echo ============================================
-echo  [6/7] hvigorw assembleApp（release 模式 .app 包）
+echo  [7/8] hvigorw assembleApp（release 模式 .app 包）
 echo ============================================
 pushd "%HARMONY_DIR%"
 if exist "%HARMONY_DIR%\hvigorw.bat" (
@@ -303,7 +336,7 @@ echo       仓库根副本: %APP_ROOT%
 
 echo.
 echo ============================================
-echo  [7/7] 校验签名（hap-sign-tool verify-app）
+echo  [8/8] 校验签名（hap-sign-tool verify-app）
 echo ============================================
 set "SIGN_TOOL="
 if exist "%DEVECO_SDK_HOME%\default\openharmony\toolchains\lib\hap-sign-tool.jar" set "SIGN_TOOL=%DEVECO_SDK_HOME%\default\openharmony\toolchains\lib\hap-sign-tool.jar"
@@ -334,7 +367,7 @@ echo.
 echo ============================================
 echo  出包完成（发布签名）
 echo ============================================
-echo  版本   : v%H_VNAME% (build %H_VCODE%)
+echo  版本   : v%H_VNAME% (build %H_VCODE%) %_CM_BUMP_NOTE%
 echo  HAP    : %HAP_OUT%\%HAP_NAME%
 echo  APP    : %HAP_OUT%\%APP_NAME%
 echo  根目录 : %APP_ROOT%
@@ -403,6 +436,37 @@ echo       Release 链接:
 echo.
 echo       Release 附件（只应有 .hap）:
 "%GH_EXE%" release view "%TAG%" --repo "%GH_REPO%" --json assets --jq ".assets[].name"
+exit /b 0
+
+REM ============================================
+REM  递增鸿蒙版本号：harmony\AppScope\app.json5
+REM    versionName patch +1（99→进位）、versionCode 同步（1000000 + 主*10000 + 次*100 + 修订）
+REM  输出形如: OK=2.0.0->2.0.1|1000201
+REM ============================================
+:bump_version
+if not exist "%BUMP_PS%" (
+    echo [错误] 缺少版本号递增脚本: %BUMP_PS%
+    echo        可从 git 恢复: git checkout scripts\tools\bump-version-harmony.ps1
+    exit /b 1
+)
+set "BUMP_OUT="
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%BUMP_PS%" 2^>^&1`) do set "BUMP_OUT=%%v"
+if not defined BUMP_OUT (
+    echo [错误] 版本号递增失败（脚本无输出）
+    exit /b 1
+)
+if not "%BUMP_OUT:~0,3%"=="OK=" (
+    echo [错误] 版本号递增失败（ps1 输出非 OK= 开头，详见上方与 %BUMP_PS%）
+    exit /b 1
+)
+REM BUMP_OUT 形如 OK=旧->新|versionCode，含 | 与 >，直接 echo 会被当成管道/重定向
+REM ⇒ 不回显原始行，改从 app.json5 读一遍（真源已更新，读出来更直观）
+set "NEW_VNAME="
+set "NEW_VCODE="
+for /f %%n in ('node "%VER_TOOL%" name') do set "NEW_VNAME=%%n"
+for /f %%c in ('node "%VER_TOOL%" code') do set "NEW_VCODE=%%c"
+echo       版本号已递增: v%NEW_VNAME%（versionCode %NEW_VCODE%）
+echo       已写入: %HARMONY_DIR%\AppScope\app.json5（提测/上架时记得一起提交）
 exit /b 0
 
 REM ============================================
