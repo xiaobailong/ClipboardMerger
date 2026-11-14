@@ -282,17 +282,18 @@ scripts\build-harmony.bat clean
 # 发布签名出包（HAP + .app，release 模式 + signature_fabu_pro 材料；
 # 每次出包自动递增 versionName/versionCode，AGC 不接受重复版本号；
 # .app 带版本号拷到仓库根，仅本地）
+# 默认出包后就把「未签名」.hap 推到 GitHub Release
+#（签名 HAP 与 .app 仅本地、不入 git；未签名包取构建自带的 entry-default-unsigned.hap）
 scripts\build-harmony-signed.bat
 
-# 出包并发布：只把「未签名」.hap 上传 GitHub Release
-# （签名 HAP 与 .app 仅本地、不入 git；未签名包默认从签名包剥离 signature/ 生成）
-scripts\build-harmony-signed.bat publish
+# 只出包、不发 Release（离线 / 本地调试）
+scripts\build-harmony-signed.bat nopublish
 
 # 本地重复调试用：出包但不递增版本号（nobump / no-bump）
 scripts\build-harmony-signed.bat nobump
 
 # 参数可组合，例如：先清缓存再出包并发布
-scripts\build-harmony-signed.bat clean publish
+scripts\build-harmony-signed.bat clean
 
 # 鸿蒙包单独补发 Release（不构建、不改版本号；只上传未签名 HAP）
 scripts\gh-release-harmony.bat

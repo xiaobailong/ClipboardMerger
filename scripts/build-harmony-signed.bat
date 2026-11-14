@@ -405,8 +405,10 @@ echo        不想发就重跑并带 nopublish。
 echo ============================================
 if not defined _CM_DO_PUBLISH goto :summary_skip_publish
 call :publish_hap
-if errorlevel 1 exit /b 1
-goto :summary_done
+if not errorlevel 1 goto :summary_done
+echo.
+echo [提示] 包已经出好，可稍后用 scripts\gh-release-harmony.bat 单独补发 Release
+exit /b 1
 :summary_skip_publish
 echo.
 echo  [跳过发布] 指定了 nopublish，本次没有上传 GitHub Release
@@ -417,7 +419,7 @@ exit /b 0
 REM ============================================
 REM  发布到 GitHub Release：只上传「未签名」.hap
 REM  签名 .hap 与 .app 仅本地（永不入 git / 不上 Release）
-REM  用法: build-harmony-signed.bat publish
+REM  默认行为（出包后自动执行），nopublish 可跳过
 REM  未签名 HAP 来源: 构建自带的 *unsigned*.hap（entry-default-unsigned.hap）；
 REM                   没有就直接报错（签名块在 ZIP 中央目录前，去不掉）
 REM ============================================
