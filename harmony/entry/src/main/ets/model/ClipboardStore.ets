@@ -1,8 +1,10 @@
 import { pasteboard } from '@kit.BasicServicesKit';
 import { preferences } from '@kit.ArkData';
-import { common } from '@kit.AbilityKit';
+import { abilityAccessCtrl, bundleManager, common, Permissions } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { Logger } from './Logger';
+
+const PERM_READ_PASTEBOARD: Permissions = 'ohos.permission.READ_PASTEBOARD';
 
 /** 一条剪贴板历史（字段名与 Android 版 ClipboardItem 对齐：content → text） */
 export interface ClipItem {
@@ -493,12 +495,34 @@ export class ClipboardStore {
     ClipboardStore.watching = false;
   }
 
+  /** 剪贴板读取权限是否已授予（App 与输入法 Extension 同一 bundle，授权一次两边都生效） */
+  private static hasPasteboardPermission(): boolean {
+    try {
+      const at: abilityAccessCtrl.AtManager = abilityAccessCtrl.createAtManager();
+      const info = bundleManager.getBundleInfoForSelfSync(
+        bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_APPLICATION);
+      const st: abilityAccessCtrl.GrantStatus =
+        at.checkAccessTokenSync(info.appInfo.accessTokenId, PERM_READ_PASTEBOARD);
+      return st === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED;
+    } catch (err) {
+      // 查不到就放行，让 getData() 自己报错（总比误判成"没授权"而放弃采集好）
+      return true;
+    }
+  }
+
   /**
    * 采集当前剪贴板文本。
    * 先做 hasData / hasDataType / getChangeCount 预检，避免无意义的权限弹窗
    * （见官方《申请访问剪贴板权限》的「剪贴板弹窗适配优化」）。
    */
   static async capture(): Promise<void> {
+    // 没授权时 hasData() 会直接返回 false（看起来像"剪贴板为空"），既采不到也不会弹授权框
+    // ⇒ 先自查权限，明确告诉用户去哪儿授权，别把「未授权」伪装成「没内容」
+    if (!ClipboardStore.hasPasteboardPermission()) {
+      ClipboardStore.setStatus('未授予「剪贴板读取」权限：请到剪集 App ⋮ → 权限 → 申请');
+      Logger.w('capture: READ_PASTEBOARD not granted, skip');
+      return;
+    }
     try {
       const sp: pasteboard.SystemPasteboard = pasteboard.getSystemPasteboard();
       if (!sp.hasData()) {

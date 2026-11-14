@@ -1,6 +1,6 @@
 import { inputMethod, inputMethodEngine, InputMethodExtensionContext } from '@kit.IMEKit';
 import { display } from '@kit.ArkUI';
-import { BusinessError } from '@kit.BasicServicesKit';
+import { BusinessError, commonEventManager } from '@kit.BasicServicesKit';
 import { ClipItem, ClipboardStore, HistRemoval } from '../../model/ClipboardStore';
 import {
   EventBus,
@@ -57,6 +57,11 @@ export class KeyboardController {
   /** 当前编辑框里的选区（由 KeyboardDelegate 的 selectionChange 事件更新，「删除」按钮要用） */
   private selBegin: number = 0;
   private selEnd: number = 0;
+  /**
+   * 公共事件订阅者。**必须持有引用**：`createSubscriberSync` 返回的对象被 JVM/ArkTS 回收后，
+   * 订阅会静默失效（键盘进程长时间空闲后就再也收不到 App 的 pull，表现为"拉不到数据"）。
+   */
+  private static busSub: commonEventManager.CommonEventSubscriber | undefined = undefined;
 
   onCreate(context: InputMethodExtensionContext): void {
     this.ctx = context;
@@ -75,9 +80,7 @@ export class KeyboardController {
     SettingsSync.init(context);
     // App → 键盘 的历史同步：App 里「清空全部」「左滑删除」等操作要同步过来
     // （只处理 src=app 的事件，避免处理自己发的而回声）
-    EventBus.subscribe((e: HistEvent) => {
-      KeyboardController.applyAppEvent(e);
-    });
+    KeyboardController.ensureSubscribed();
     // ⚠️ 不再把键盘侧的历史变化广播给 App：键盘历史/回收站都是**权威源**，
     // App 打开页面时拉一次全量（'pull' → 'snapshot' → 整份覆盖），键盘操作无需回写 App。
     // （所以这里也不注册 ClipboardStore.setChangeListener，避免「键盘一操作 App 列表就跟着变」）
@@ -109,6 +112,13 @@ export class KeyboardController {
       ThemeStore.reload();
       // 拉起键盘时补采一次剪贴板（刚复制完就切过来打字的场景）
       ClipboardStore.capture();
+      // 订阅可能在空闲期丢失 ⇒ 每次被唤醒都补一次
+      KeyboardController.ensureSubscribed();
+      // **关键**：App 用 attach(showKeyboard=false) 把我们唤醒时，App 随后发的 pull 常常送不到
+      // （进程刚从冻结态恢复 / 订阅刚丢），所以趁这次 inputStart 主动把三份全量推过去，App 收到即整份覆盖（幂等）
+      KeyboardController.publishSnapshot();
+      KeyboardController.publishRecycleSnapshot();
+      KeyboardController.publishSettingsSnapshot();
       // 高度设置可能在 App 侧改过 ⇒ 每次输入开始都重新应用一次
       if (this.panel !== undefined) {
         this.resizePanel(this.panel);
@@ -160,6 +170,9 @@ export class KeyboardController {
 
   onDestroy(): void {
     ClipboardStore.stopWatch();
+    // 订阅也要还回去；下次 onCreate 会重新 ensureSubscribed
+    EventBus.unsubscribe(KeyboardController.busSub);
+    KeyboardController.busSub = undefined;
     this.client = undefined;
     this.active = false;
     Logger.d('KeyboardController.onDestroy');
@@ -396,16 +409,7 @@ export class KeyboardController {
     }
     if (e.op === OP_RECYCLE_PULL) {
       // App 打开回收站：键盘回收站是权威源 ⇒ 直接把键盘这份全量回过去（App 整份覆盖它的镜像）
-      if (!RecycleBinStore.isReady()) {
-        Logger.w('recyclePull ← App: 键盘回收站尚未就绪，不回快照（App 保留本地缓存）');
-        return;
-      }
-      const items: RecycleItem[] = RecycleBinStore.load();
-      const chunks: ChunkPayload[] = SyncChunk.pack(SNAP_RECYCLE, Date.now(), items);
-      for (let i = 0; i < chunks.length; i++) {
-        EventBus.publish(OP_RECYCLE_SNAPSHOT, JSON.stringify(chunks[i]), Date.now(), SRC_IME);
-      }
-      Logger.d(`recyclePull ← App: 已回全量快照 ${items.length} 条 / ${chunks.length} 片`);
+      KeyboardController.publishRecycleSnapshot();
       return;
     }
     if (e.op === OP_RECYCLE_REMOVE) {
@@ -418,8 +422,7 @@ export class KeyboardController {
     }
     if (e.op === OP_SETTINGS_PULL) {
       // App 打开/回前台：键盘那份设置是权威源 ⇒ 直接回快照，App 自己对齐
-      EventBus.publish(OP_SETTINGS_SNAPSHOT, SettingsSync.toJson(), Date.now(), SRC_IME);
-      Logger.d('settingsPull ← App: 已回设置快照');
+      KeyboardController.publishSettingsSnapshot();
       return;
     }
     if (e.op === OP_SETTINGS_SET) {
@@ -505,6 +508,45 @@ export class KeyboardController {
     }
     EventBus.publish(OP_ACK, '', Date.now(), SRC_IME, id);
     Logger.d(`ack → App: #${id}`);
+  }
+
+  /** 订阅 App 发来的事件（幂等；持有引用防止被回收导致订阅静默失效） */
+  private static ensureSubscribed(): void {
+    if (KeyboardController.busSub !== undefined) {
+      return;
+    }
+    KeyboardController.busSub = EventBus.subscribe((e: HistEvent) => {
+      KeyboardController.applyAppEvent(e);
+    });
+    Logger.d(`ensureSubscribed: subscribed=${KeyboardController.busSub !== undefined}`);
+  }
+
+  /** 把键盘回收站全量广播给 App（分片发送；App 侧整份覆盖镜像） */
+  static publishRecycleSnapshot(): void {
+    if (!RecycleBinStore.isReady()) {
+      Logger.w('publishRecycleSnapshot: 键盘回收站尚未就绪，跳过（App 保留本地缓存）');
+      return;
+    }
+    try {
+      const items: RecycleItem[] = RecycleBinStore.load();
+      const chunks: ChunkPayload[] = SyncChunk.pack(SNAP_RECYCLE, Date.now(), items);
+      for (let i = 0; i < chunks.length; i++) {
+        EventBus.publish(OP_RECYCLE_SNAPSHOT, JSON.stringify(chunks[i]), Date.now(), SRC_IME);
+      }
+      Logger.d(`publishRecycleSnapshot → App: ${items.length} 条 / ${chunks.length} 片`);
+    } catch (err) {
+      Logger.w('publishRecycleSnapshot failed');
+    }
+  }
+
+  /** 把键盘这份设置全量广播给 App（皮肤/高度/切换目标/保留天数以键盘为准） */
+  static publishSettingsSnapshot(): void {
+    try {
+      EventBus.publish(OP_SETTINGS_SNAPSHOT, SettingsSync.toJson(), Date.now(), SRC_IME);
+      Logger.d('publishSettingsSnapshot → App');
+    } catch (err) {
+      Logger.w('publishSettingsSnapshot failed');
+    }
   }
 
   /** 把键盘这份历史全量广播给 App（旧→新，带时间戳；App 侧整份覆盖）。分片发送，见 SyncChunk */

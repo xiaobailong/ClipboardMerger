@@ -2,8 +2,8 @@
   "app": {
     "bundleName": "com.example.clipboardmerger",
     "vendor": "xiaobailong",
-    "versionCode": 1020009,
-    "versionName": "2.0.9",
+    "versionCode": 1020010,
+    "versionName": "2.0.10",
     "icon": "$media:layered_image",
     "label": "$string:app_name"
   }

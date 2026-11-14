@@ -99,6 +99,8 @@ struct Index {
   @StorageLink('clipItems') items: ClipItem[] = [];
   @StorageLink('clipStatus') status: string = '';
   @StorageLink('imeActive') imeActive: boolean = false;
+  /** 剪集输入法被系统设成了「基础模式」：公共事件/剪贴板会被系统管控 ⇒ 跨进程同步必然失效，需提示用户 */
+  @State imeBasicMode: boolean = false;
   @State selectedTexts: string[] = [];
   @State curTab: number = 0;
   @State imeInfo: string = '输入法检测中…';
@@ -158,6 +160,8 @@ struct Index {
   private imeAttached: boolean = false;
   /** 唤醒后重发拉取前的等待定时器（等输入法进程 onCreate 里把 subscribe 注册完） */
   private warmRetryTimer: number = -1;
+  /** 本轮没唤醒成功是因为「剪集不是当前输入法」（不是进程没起来）⇒ 文案要区分，别误导 */
+  private warmBlocked: boolean = false;
 
   private p(): Palette {
     return paletteOf(this.themeId);
@@ -306,6 +310,7 @@ struct Index {
    */
   private syncRecycleFromIme(): void {
     this.cancelRecyclePullTimer();
+    this.warmBlocked = false;
     this.recycleSyncing = true;
     this.notice = '正在从键盘同步回收站…';
     EventBus.publish(OP_RECYCLE_PULL, '', Date.now(), SRC_APP);
@@ -316,16 +321,8 @@ struct Index {
       this.notice = '正在唤醒键盘进程…';
       Logger.w('recyclePull: no reply, warm up IME');
       this.warmUpIme(() => {
-        this.notice = '正在从键盘同步回收站…';
-        EventBus.publish(OP_RECYCLE_PULL, '', Date.now(), SRC_APP);
         Logger.d('recyclePull（唤醒后重试）→ IME');
-        this.recyclePullTimer = setTimeout(() => {
-          this.recyclePullTimer = -1;
-          this.recycleSyncing = false;
-          this.notice = '键盘未启动（已尝试唤醒），暂显示本机缓存';
-          Logger.w('recyclePull: still no reply after warm-up');
-          this.detachIme();
-        }, 2000);
+        this.retryRecyclePull(3);
       });
     }, 1500);
   }
@@ -344,6 +341,7 @@ struct Index {
    */
   private syncClipboardFromIme(): void {
     this.cancelClipPullTimer();
+    this.warmBlocked = false;
     this.notice = '正在从键盘同步剪贴板…';
     EventBus.publish('pull', '', Date.now(), SRC_APP);
     Logger.d('clipPull → IME');
@@ -353,17 +351,47 @@ struct Index {
       this.notice = '正在唤醒键盘进程…';
       Logger.w('clipPull: no reply, warm up IME');
       this.warmUpIme(() => {
-        this.notice = '正在从键盘同步剪贴板…';
-        EventBus.publish('pull', '', Date.now(), SRC_APP);
         Logger.d('clipPull（唤醒后重试）→ IME');
-        this.clipPullTimer = setTimeout(() => {
-          this.clipPullTimer = -1;
-          this.notice = '键盘未启动（已尝试唤醒），暂显示本机缓存';
-          Logger.w('clipPull: still no reply after warm-up');
-          this.detachIme();
-        }, 2000);
+        this.retryClipPull(3);
       });
     }, 1500);
+  }
+
+  /** 唤醒后重发 pull（最多 times 次，每次间隔 1s）：进程冷启动可能要好几百毫秒才订阅得上 */
+  private retryClipPull(times: number): void {
+    EventBus.publish('pull', '', Date.now(), SRC_APP);
+    this.clipPullTimer = setTimeout(() => {
+      this.clipPullTimer = -1;
+      if (times > 1) {
+        Logger.w(`clipPull: 仍未回应，重试（剩 ${times - 1} 次）`);
+        this.retryClipPull(times - 1);
+        return;
+      }
+      this.notice = this.warmBlocked
+        ? '剪集不是当前输入法，拉不到键盘数据（请在系统设置里切回剪集输入法）'
+        : '键盘未启动（已尝试唤醒），暂显示本机缓存';
+      Logger.w(`clipPull: still no reply (warmBlocked=${this.warmBlocked})`);
+      this.detachIme();
+    }, 1000);
+  }
+
+  /** 回收站版的唤醒后重试（与 retryClipPull 同构） */
+  private retryRecyclePull(times: number): void {
+    EventBus.publish(OP_RECYCLE_PULL, '', Date.now(), SRC_APP);
+    this.recyclePullTimer = setTimeout(() => {
+      this.recyclePullTimer = -1;
+      if (times > 1) {
+        Logger.w(`recyclePull: 仍未回应，重试（剩 ${times - 1} 次）`);
+        this.retryRecyclePull(times - 1);
+        return;
+      }
+      this.recycleSyncing = false;
+      this.notice = this.warmBlocked
+        ? '剪集不是当前输入法，拉不到键盘回收站（请在系统设置里切回剪集输入法）'
+        : '键盘未启动（已尝试唤醒），暂显示本机缓存';
+      Logger.w(`recyclePull: still no reply (warmBlocked=${this.warmBlocked})`);
+      this.detachIme();
+    }, 1000);
   }
 
   /**
@@ -376,6 +404,7 @@ struct Index {
     // 只在「剪集就是当前输入法」时唤醒：否则 attach 拉起来的是别的输入法，白折腾
     if (!this.computeImeActive()) {
       Logger.w('warmUpIme: 剪集不是当前输入法，跳过唤醒');
+      this.warmBlocked = true;
       onReady();
       return;
     }
@@ -799,7 +828,10 @@ struct Index {
     this.detachIme();
     ClipboardStore.replaceAll(kept);
     this.selectedTexts = [];
-    this.notice = `已从键盘侧同步剪贴板 ${kept.length} 条`;
+    // 键盘唤醒时会**主动推**三份快照（历史/回收站/设置），不在当前 Tab 的那份只更新数据不改提示
+    if (this.curTab === 0) {
+      this.notice = `已从键盘侧同步剪贴板 ${kept.length} 条`;
+    }
     Logger.d(`snapshot ← IME: replace ${kept.length} 条（快照 ${raw.length}，本地待删 ${pending.size}）`);
   }
 
@@ -822,7 +854,9 @@ struct Index {
     this.recycleSyncing = false;
     RecycleBinStore.replaceAll(kept);
     this.recycleSelIds = [];
-    this.notice = `已从键盘侧同步回收站 ${kept.length} 条`;
+    if (this.curTab === 1) {
+      this.notice = `已从键盘侧同步回收站 ${kept.length} 条`;
+    }
     Logger.d(`recycleSnapshot ← IME: replace ${kept.length} 条（快照 ${raw.length}，本地待删 ${pending.size}）`);
   }
 
@@ -1139,6 +1173,9 @@ struct Index {
       this.permPaste = false;
     }
     this.permNotify = false;
+    if (!this.permPaste) {
+      this.notice = '未授予「剪贴板读取」权限：右上角 ⋮ → 权限 → 申请（否则剪贴板历史一直为空）';
+    }
     Logger.d(`perms: pasteboard=${this.permPaste}, notify=${this.permNotify}`);
   }
 
@@ -1150,6 +1187,7 @@ struct Index {
     // 「已激活」= 剪集就是系统当前输入法：必须在 App 进程里自己问系统
     // （键盘进程写入的 AppStorage 与本进程隔离，App 侧 @StorageLink('imeActive') 永远是默认 false）
     this.imeActive = this.computeImeActive();
+    this.imeBasicMode = this.computeImeBasicMode();
     const own: string = ImeSettings.ownRegistered() ? '剪集输入法已注册 ✓' : '剪集输入法未出现在系统列表 ✗';
     this.imeInfo = cur === undefined ? own : `${own}　当前：${cur.label}`;
     const t: ImeItem | undefined = ImeSettings.getTarget();
@@ -1185,17 +1223,39 @@ struct Index {
     }
   }
 
+  /**
+   * 剪集输入法是否被系统设成「基础模式」（API 20+ 的 `InputMethodProperty.enabledState`）。
+   * 基础模式下系统会管控输入法 Extension 的公共事件 / 剪贴板等能力 ⇒ 跨进程同步必然拿不到数据，
+   * 这不是本 App 的 bug，需要引导用户去系统设置换成「完整体验模式」。
+   */
+  private computeImeBasicMode(): boolean {
+    try {
+      const cur: inputMethod.InputMethodProperty = inputMethod.getCurrentInputMethod();
+      if (cur.name !== APP_BUNDLE) {
+        return false;
+      }
+      const st: inputMethod.EnabledState | undefined = cur.enabledState;
+      const basic: boolean = st === inputMethod.EnabledState.BASIC_MODE;
+      Logger.d(`computeImeBasicMode: enabledState=${st}, basic=${basic}`);
+      return basic;
+    } catch (err) {
+      return false;
+    }
+  }
+
   /** 合并状态条左侧：历史条数 + 已选条数（多选时补一句操作提示） */
   private countText(): string {
     const sel: number = this.selectedTexts.length;
     const more: string = sel > 1 ? '　点「合并选中」按顺序拼接' : '';
-    return `📋 共 ${this.items.length} 条　已选 ${sel} 条${more}`;
+    // 未授权是"历史一直为空"的最常见原因（重装后权限会被重置）⇒ 常驻提示，别让用户自己猜
+    const warn: string = this.permPaste ? '' : '　⚠ 未授权剪贴板读取（⋮ → 权限）';
+    return `📋 共 ${this.items.length} 条　已选 ${sel} 条${more}${warn}`;
   }
 
   /** 合并状态条右侧：输入法状态（只读展示；未激活时带上「当前是谁」） */
   private imeBarText(): string {
     if (this.imeActive) {
-      return '输入法: 已激活 ✅';
+      return this.imeBasicMode ? '输入法: 基础模式 ⚠️' : '输入法: 已激活 ✅';
     }
     return this.curImeLabel === ''
       ? '输入法: 未激活 ⚠️'

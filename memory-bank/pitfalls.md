@@ -431,3 +431,19 @@
 - 首次记录: 2026-10-15（21:43 构建：javac 警告 0 条，`BUILD SUCCESSFUL in 10s`）
 - 后续（2026-10-15 21:56，见 `ADR-018`）: 按「路 A」落地 —— daemon JDK / `JAVA_HOME` 换 JDK 17，Java&Kotlin 目标改 17，临时的 `-Xlint:-options` 已删除。实测 `:app:assembleDebug` → `BUILD SUCCESSFUL in 14s`、警告 0 条，`BuildConfig.class` / `MainActivity.class` 均 `major=61`。本条保留，作为「**为什么不能用 JDK 21**」的判据。
 
+## PIT-055 公共事件订阅者不持有引用 ⇒ 键盘 Extension 空闲后订阅静默失效（进程还活着也收不到事件）
+- 触发条件: `KeyboardController.onCreate` 里写 `EventBus.subscribe(...)` 但**丢弃返回值**（`commonEventManager.createSubscriberSync` 返回的对象没人引用）。
+- 现象: 键盘进程空闲约 1 分钟后，App 发的 `pull` / `removeMany` / `recyclePull` 全部收不到（键盘侧日志**没有** `EventBus recv`），但 `attach` 仍能唤醒进程、`inputStart` 照常执行 ⇒ 表现成"进程活着却怎么也拉不到数据"，重启进程/重装后又能用一阵子。
+- 正确做法: ①静态字段持住订阅者（`private static busSub: CommonEventSubscriber | undefined`），`onDestroy` 里 `EventBus.unsubscribe(busSub)` 并置 `undefined`；②`ensureSubscribed()` 幂等补订阅，在 `onCreate` **和** `inputStart` 各调一次；③关键路径别赌事件送达 —— `inputStart`（= App 用 `attach(showKeyboard=false)` 把我们唤醒的那一刻）直接 `publishSnapshot()` / `publishRecycleSnapshot()` / `publishSettingsSnapshot()` 主动推全量，App 收到即整份覆盖（幂等）。
+- 反例: 只 `EventBus.subscribe(cb)` 不接返回值；把"进程在 ps 里"当"订阅还活着"；只靠 App 发 `pull` 取数据（唤醒后补发的 pull 实测送不到，`clipPull` 连发 4 次零回应）。
+- 自检: 键盘进程日志每次启动有 `ensureSubscribed: subscribed=true`；空闲 1~2 分钟后切 App 的剪贴板/回收站页，应出现 `publishSnapshot → App`（或 `recyclePull ← App: 已回全量快照`）且界面有数据。
+- 相关: `PIT-050`（事件要带 `src` 防回声）、`PIT-039`（两进程沙箱隔离）　- 首次记录: 2026-11-14
+
+## PIT-056 未授予 `READ_PASTEBOARD` 时 `hasData()` 假阴性：既不采集、也不弹系统授权框
+- 触发条件: 重装/新装后运行时权限被重置，`ClipboardStore.capture()` 先做 `sp.hasData()` / `hasDataType()` 预检。
+- 现象: 复制了内容，键盘面板和 App 都是 0 条；日志只有 `perms: pasteboard=false`，`capture` **不报任何错**（走到 `setStatus('剪贴板为空')` 就返回）；系统授权弹窗也永远不出现 —— 看起来像"剪贴板采集坏了"或"事件没通"，实际是没权限。
+- 正确做法: ①`capture()` 里先自查：`abilityAccessCtrl.createAtManager().checkAccessTokenSync(bundleManager.getBundleInfoForSelfSync(...).appInfo.accessTokenId, 'ohos.permission.READ_PASTEBOARD')`，未授予就 `setStatus('未授予「剪贴板读取」权限：请到剪集 App ⋮ → 权限 → 申请')` + `Logger.w('capture: READ_PASTEBOARD not granted')` 后 return；②App 首页状态条常驻提示（`countText()` 里加 `⚠ 未授权剪贴板读取（⋮ → 权限）`）并保留「申请」按钮；③**输入法 Extension 自己弹不了权限框**，必须由 UIAbility 侧 `requestPermissionsFromUser`；④调试期可用 `hdc shell "atm perm -g -i <tokenId> -p ohos.permission.READ_PASTEBOARD"`（`tokenId` 取自 `bm dump -n <bundle> | grep accessTokenId`；只有 debug hap 的 token 可改）。
+- 反例: 把 `hasData()==false` 一律当成"剪贴板里没内容"（于是静默 return，把真因藏死）；指望在 Extension 里弹授权框；用 `install -r` 后忘了权限会重置。
+- 自检: 启动日志 `perms: pasteboard=true`；未授权时手动 `atm perm -g` 后重进 App，键盘进程应打出 `addText: done, total=N` 且 App 收到 `snapshot ← IME: replace N 条`。
+- 相关: `PIT-039`、`ADR-005`　- 首次记录: 2026-11-14
+
