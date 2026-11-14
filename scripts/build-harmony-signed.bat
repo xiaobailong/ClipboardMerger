@@ -194,13 +194,28 @@ if errorlevel 1 (
     echo [错误] build-profile.json5 里没有 signingConfigs / signingConfig ⇒ 只会出 unsigned 包（PIT-037）
     exit /b 1
 )
-for %%a in ("%SIGN_P12%") do set "SIGN_P12_NAME=%%~nxa"
-findstr /c:"%SIGN_P12_NAME%" "%BUILD_PROFILE%" >nul
-if errorlevel 1 (
-    echo [警告] build-profile.json5 未引用 %SIGN_P12_NAME%
-    echo        若签名目录换过，请同步修改 harmony\build-profile.json5 的 signingConfigs
-)
-echo       签名配置已就绪。
+REM build-profile.json5 是本机文件（已 gitignore），DevEco「自动签名」会把它改回
+REM .ohos\config 下的调试证书；用调试证书出的包 profile type 是 debug，
+REM AGC 会报「软件包解析失败 / 合法性不通过 993」。这里必须确认三项材料都来自 %SIGN_DIR%。
+REM findstr 会把 JSON 里的 \\ 当转义符，所以只按「签名目录名」数命中行数（三行材料路径）。
+for %%a in ("%SIGN_DIR%") do set "SIGN_DIR_NAME=%%~nxa"
+set "_CM_SIGN_HITS=0"
+for /f "delims=" %%l in ('findstr /c:"%SIGN_DIR_NAME%" "%BUILD_PROFILE%" 2^>nul') do set /a _CM_SIGN_HITS+=1
+REM DevEco 自动签名的 debug 配置可以与发布配置并存，实际用哪套由 products[].signingConfig 决定；
+REM 出包后 [8/8] 会强制校验 profile type is: release，debug 包一定会被拦下。
+findstr /c:".ohos" "%BUILD_PROFILE%" >nul
+if not errorlevel 1 echo       提示: 工程里还保留 DevEco 自动签名配置，出包以 products[].signingConfig 为准。
+if %_CM_SIGN_HITS% GEQ 3 goto :sign_config_ok
+echo [错误] build-profile.json5 的签名材料不是 %SIGN_DIR% 里的发布证书，已终止出包。
+echo        DevEco「自动签名」会把 signingConfigs 覆盖成 .ohos\config 下的调试证书。
+echo        请把 signingConfigs.material 的三项改回，其余字段保持不变：
+echo          certpath   = %SIGN_CER%
+echo          profile    = %SIGN_P7B%
+echo          storeFile  = %SIGN_P12%
+echo        改完重跑本脚本。
+exit /b 1
+:sign_config_ok
+echo       签名配置已就绪（发布证书）。
 
 echo.
 echo ============================================
@@ -550,12 +565,14 @@ if "%_CM_EXPECT%"=="" (
     exit /b 0
 )
 findstr /c:"profile type is: %_CM_EXPECT%" "tmp\verify_%_CM_TAG%.log" >nul
-if errorlevel 1 (
-    echo [警告] %_CM_TAG% 的 Profile 类型不是 %_CM_EXPECT% —— 请确认 build-profile.json5 用的是 release 版 .p7b
-) else (
-    echo       %_CM_TAG%: Profile 类型 %_CM_EXPECT% ✓
-)
+if errorlevel 1 goto :profile_bad
+echo       %_CM_TAG%: Profile 类型 %_CM_EXPECT% ✓
 exit /b 0
+:profile_bad
+echo [错误] %_CM_TAG% 的 Profile 类型不是 %_CM_EXPECT%，本次出包作废。
+echo        常见原因: build-profile.json5 被 DevEco 自动签名改回调试证书。
+echo        请改用 %SIGN_DIR% 下的发布证书后重跑。
+exit /b 1
 
 REM ============================================
 REM  定位 DevEco Studio / 命令行工具（hvigor / node / SDK）
