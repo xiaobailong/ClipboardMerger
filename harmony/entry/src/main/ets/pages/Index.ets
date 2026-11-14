@@ -58,6 +58,17 @@ const APP_BUNDLE: string = 'com.example.clipboardmerger';
 const PERM_READ_PASTEBOARD: Permissions = 'ohos.permission.READ_PASTEBOARD';
 const LIST_LIMIT: number = 200;
 const MERGE_SEP: string = '\n';
+/**
+ * 唤醒键盘进程用的编辑框配置（`InputMethodController.attach` 的必填参数）。
+ * 只是走一遍「客户端绑定输入法」的框架流程把输入法 Extension 拉起来，
+ * attach 时 showKeyboard=false ⇒ 键盘不会弹，也不会有真正的输入，字段随便填。
+ */
+const WARM_TEXT_CONFIG: inputMethod.TextConfig = {
+  inputAttribute: {
+    textInputType: inputMethod.TextInputType.TEXT,
+    enterKeyType: inputMethod.EnterKeyType.NONE
+  }
+};
 /** 顶栏图标说明（设置里的「按键」用；name 写**全量名称**，按钮上的简写放在 hint 里） */
 interface ImeKeyHint {
   icon: Resource;
@@ -143,6 +154,10 @@ struct Index {
   private recyclePullTimer: number = -1;
   /** 拉剪切板全量的超时定时器（键盘进程没起来时不能把本机列表清空） */
   private clipPullTimer: number = -1;
+  /** 是否已 attach 到输入法（= 已把键盘进程叫醒；数据到手后 detach，别一直占着输入客户端） */
+  private imeAttached: boolean = false;
+  /** 唤醒后重发拉取前的等待定时器（等输入法进程 onCreate 里把 subscribe 注册完） */
+  private warmRetryTimer: number = -1;
 
   private p(): Palette {
     return paletteOf(this.themeId);
@@ -287,18 +302,31 @@ struct Index {
   /**
    * 打开回收站时向键盘要一次**全量**（键盘回收站是权威源），
    * 键盘回 `recycleSnapshot` 后由本机整份覆盖镜像（见 histSub）。
-   * 键盘进程没起来（1.5s 无回应）⇒ 保留本机缓存，只提示，绝不清空。
+   * 没回应 ⇒ 先把键盘进程叫醒（attach 不弹键盘）再拉一次；还是不行才提示缓存。
    */
   private syncRecycleFromIme(): void {
     this.cancelRecyclePullTimer();
     this.recycleSyncing = true;
+    this.notice = '正在从键盘同步回收站…';
     EventBus.publish(OP_RECYCLE_PULL, '', Date.now(), SRC_APP);
     Logger.d('recyclePull → IME');
     this.recyclePullTimer = setTimeout(() => {
       this.recyclePullTimer = -1;
-      this.recycleSyncing = false;
-      this.notice = '键盘进程未运行，暂显示本机缓存';
-      Logger.w('recyclePull: no reply from IME (timeout)');
+      // 输入法 Extension 是按需拉起的：进程没起来时事件没人收，只能先把它叫醒再重试
+      this.notice = '正在唤醒键盘进程…';
+      Logger.w('recyclePull: no reply, warm up IME');
+      this.warmUpIme(() => {
+        this.notice = '正在从键盘同步回收站…';
+        EventBus.publish(OP_RECYCLE_PULL, '', Date.now(), SRC_APP);
+        Logger.d('recyclePull（唤醒后重试）→ IME');
+        this.recyclePullTimer = setTimeout(() => {
+          this.recyclePullTimer = -1;
+          this.recycleSyncing = false;
+          this.notice = '键盘未启动（已尝试唤醒），暂显示本机缓存';
+          Logger.w('recyclePull: still no reply after warm-up');
+          this.detachIme();
+        }, 2000);
+      });
     }, 1500);
   }
 
@@ -312,7 +340,7 @@ struct Index {
   /**
    * 打开剪切板时向键盘要一次**全量**历史（键盘历史是权威源），
    * 键盘回 `snapshot` 后由本机整份覆盖（见 histSub），不合并。
-   * 键盘进程没起来（1.5s 无回应）⇒ 保留本机缓存，只提示，绝不清空。
+   * 没回应 ⇒ 先把键盘进程叫醒（attach 不弹键盘）再拉一次；还是不行才提示缓存。
    */
   private syncClipboardFromIme(): void {
     this.cancelClipPullTimer();
@@ -321,9 +349,89 @@ struct Index {
     Logger.d('clipPull → IME');
     this.clipPullTimer = setTimeout(() => {
       this.clipPullTimer = -1;
-      this.notice = '键盘进程未运行，暂显示本机缓存';
-      Logger.w('clipPull: no reply from IME (timeout)');
+      // 输入法 Extension 是按需拉起的：进程没起来时事件没人收，只能先把它叫醒再重试
+      this.notice = '正在唤醒键盘进程…';
+      Logger.w('clipPull: no reply, warm up IME');
+      this.warmUpIme(() => {
+        this.notice = '正在从键盘同步剪贴板…';
+        EventBus.publish('pull', '', Date.now(), SRC_APP);
+        Logger.d('clipPull（唤醒后重试）→ IME');
+        this.clipPullTimer = setTimeout(() => {
+          this.clipPullTimer = -1;
+          this.notice = '键盘未启动（已尝试唤醒），暂显示本机缓存';
+          Logger.w('clipPull: still no reply after warm-up');
+          this.detachIme();
+        }, 2000);
+      });
     }, 1500);
+  }
+
+  /**
+   * 唤醒键盘进程（输入法 Extension 只能由系统按需拉起，App 不能直接启动它）：
+   * 走 IME Kit 的「自绘编辑框」入口 `attach(showKeyboard = false, …)` ——
+   * 系统会把它当成「有编辑框要输入」去拉起剪集输入法进程，但**不显示键盘**。
+   * 进程 onCreate 里会 subscribe 公共事件 + 发 `hello`，所以等一小会儿再重发 pull。
+   */
+  private warmUpIme(onReady: () => void): void {
+    // 只在「剪集就是当前输入法」时唤醒：否则 attach 拉起来的是别的输入法，白折腾
+    if (!this.computeImeActive()) {
+      Logger.w('warmUpIme: 剪集不是当前输入法，跳过唤醒');
+      onReady();
+      return;
+    }
+    if (this.imeAttached) {
+      Logger.d('warmUpIme: 已 attach，直接重试拉取');
+      onReady();
+      return;
+    }
+    try {
+      inputMethod.getController().attach(false, WARM_TEXT_CONFIG).then(() => {
+        this.imeAttached = true;
+        Logger.d('warmUpIme: attach(showKeyboard=false) ok');
+        this.scheduleWarmRetry(onReady);
+      }).catch((err: BusinessError) => {
+        Logger.w(`warmUpIme: attach failed code=${err.code} ${err.message}`);
+        // 拉不起来也要再试一次 pull（也可能只是事件慢了）
+        onReady();
+      });
+    } catch (err) {
+      Logger.w('warmUpIme: getController/attach 抛异常');
+      onReady();
+    }
+  }
+
+  /** 等输入法进程把事件订阅注册好（onCreate 是异步的）再重发拉取 */
+  private scheduleWarmRetry(onReady: () => void): void {
+    if (this.warmRetryTimer >= 0) {
+      clearTimeout(this.warmRetryTimer);
+    }
+    this.warmRetryTimer = setTimeout(() => {
+      this.warmRetryTimer = -1;
+      // 设置快照（皮肤/高度/保留天数）也是以键盘为准，趁唤醒了顺手对齐一次
+      this.syncSettingsFromIme();
+      onReady();
+    }, 600);
+  }
+
+  /** 数据到手（或彻底失败）后解除绑定：attach 期间本窗口被当成输入客户端，用完即放 */
+  private detachIme(): void {
+    if (this.warmRetryTimer >= 0) {
+      clearTimeout(this.warmRetryTimer);
+      this.warmRetryTimer = -1;
+    }
+    if (!this.imeAttached) {
+      return;
+    }
+    this.imeAttached = false;
+    try {
+      inputMethod.getController().detach().then(() => {
+        Logger.d('detachIme: ok');
+      }).catch((err: BusinessError) => {
+        Logger.w(`detachIme: failed code=${err.code}`);
+      });
+    } catch (err) {
+      Logger.w('detachIme: getController/detach 抛异常');
+    }
   }
 
   private cancelClipPullTimer(): void {
@@ -688,6 +796,7 @@ struct Index {
     }
     this.pruneSatisfiedPending(present);
     this.cancelClipPullTimer();
+    this.detachIme();
     ClipboardStore.replaceAll(kept);
     this.selectedTexts = [];
     this.notice = `已从键盘侧同步剪贴板 ${kept.length} 条`;
@@ -709,6 +818,7 @@ struct Index {
     }
     this.pruneSatisfiedPending(present);
     this.cancelRecyclePullTimer();
+    this.detachIme();
     this.recycleSyncing = false;
     RecycleBinStore.replaceAll(kept);
     this.recycleSelIds = [];
@@ -999,6 +1109,8 @@ struct Index {
 
   /** 页面销毁时退订系统输入法事件 */
   aboutToDisappear(): void {
+    // 唤醒用的 attach 要还回去，别把本窗口一直挂在输入法客户端上
+    this.detachIme();
     const cb = this.imeChangeCb;
     if (cb === undefined) {
       return;

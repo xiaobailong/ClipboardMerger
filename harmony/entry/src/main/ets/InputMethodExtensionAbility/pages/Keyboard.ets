@@ -1,5 +1,5 @@
 import { inputMethod } from '@kit.IMEKit';
-import { display } from '@kit.ArkUI';
+import { display, LengthMetrics } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { ClipItem, ClipboardStore } from '../../model/ClipboardStore';
 import { EventBus, SRC_IME } from '../../model/EventBus';
@@ -799,12 +799,13 @@ struct Keyboard {
         .width('100%')
         .layoutWeight(1)
       } else if (this.showRecycle) {
-        // 面板内回收站：两行操作按钮 + 状态行做成**列表表头**，跟着列表一起滚
+        // 面板内回收站：操作按钮 + 状态行做成**列表表头**，跟着列表一起滚
         // ⇒ 平铺时列表吃满内容区（常驻按钮会挤掉大半可视区），要操作用力往上滚回顶部即可
         List({ space: 4 }) {
           ListItem() {
             Column() {
-              Row() {
+              // 一行按钮：面板够宽就排成一行，窄屏放不下按 Flex 自动换行（不挤字、不裁切）
+              Flex({ wrap: FlexWrap.Wrap, alignItems: ItemAlign.Center, space: { cross: LengthMetrics.vp(4) } }) {
                 this.imeKey('全选', 0, () => {
                   this.selectAllRecycle();
                 })
@@ -814,12 +815,6 @@ struct Keyboard {
                 this.imeKey('恢复', 0, () => {
                   this.restoreSelectedRecycle();
                 })
-              }
-              .width('100%')
-              .padding({ top: 4, bottom: 1 })
-              .alignItems(VerticalAlign.Center)
-
-              Row() {
                 this.imeKey('全恢复', 0, () => {
                   this.restoreAllRecycle();
                 })
@@ -834,8 +829,7 @@ struct Keyboard {
                 })
               }
               .width('100%')
-              .padding({ top: 1, bottom: 2 })
-              .alignItems(VerticalAlign.Center)
+              .padding({ top: 4, bottom: 2 })
 
               Text(this.recycleBarText())
                 .fontSize(11)
