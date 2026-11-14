@@ -6,10 +6,11 @@
 > 鸿蒙（HarmonyOS NEXT）用户：本 APK 在鸿蒙上**无法被识别成输入法**（卓易通容器里的 IME 注册不到系统），
 > 请看原生版本 [`harmony/README.md`](harmony/README.md)（HAP 输入法，功能 1:1 移植，已真机验证）。
 >
-> **鸿蒙原生版现状**（2026-11-13，真机 HLS-AL00 / API 26 实测）：
+> **鸿蒙原生版现状**（2026-11-14，真机 HLS-AL00 / API 26 实测）：
 > - 已实现：键盘面板五键 +「▼ 收起」+ 历史列表；键盘内 **⚙ 设置**（切换目标 / 键盘高度 / 键盘皮肤 / 键盘进程日志，全部键盘自持）；
 >   权限设置（剪贴板读取权限 / 输入法设置，已授权绿标 + 一键跳系统页）；GitHub 拉取/保存 + 「网络诊断」；
->   剪贴板历史跨进程一致（公共事件 `add`/`remove`/`clear`/`snapshot`）；日志（开关 + **清理日志** + 导出到 Download）；
+>   剪贴板历史跨进程一致（公共事件 `add`/`remove`/`clear`/`snapshot`，全量快照按条目级**分片传输**，规避 IPC 单条事件大小上限）；日志（开关 + **清理日志** + 导出到 Download）；
+>   **设置跨进程同步**（App 打开/回前台拉键盘设置快照对齐，App 内改设置单条回写键盘；日志开关两端各管各的，不参与同步）；
 >   **IME 状态栏操作反馈**（粘贴/全部粘贴/清空/删除/切换均在底部状态栏实时显示结果，2.5 秒后自动恢复记录数）；
 >   **键盘进程回收站**（键盘进程独立沙箱留底：左滑删除 / 批量删除 / 清空全部均先移入键盘回收站，App 进程收不到同步事件时也能从键盘面板直接找回，支持单条/批量恢复、清空二次确认）。
 > - **已移除的功能（平台不可实现，非缺陷）**：绑定App、通知提醒、后台保活（WorkScheduler 定时补活）、自启动/电池权限项 ——
@@ -283,7 +284,8 @@ scripts\build-harmony.bat clean
 # .app 带版本号拷到仓库根，仅本地）
 scripts\build-harmony-signed.bat
 
-# 出包并发布：只把 .hap 上传 GitHub Release（.app 不上传、不入 git）
+# 出包并发布：只把「未签名」.hap 上传 GitHub Release
+# （签名 HAP 与 .app 仅本地、不入 git；未签名包默认从签名包剥离 signature/ 生成）
 scripts\build-harmony-signed.bat publish
 
 # 本地重复调试用：出包但不递增版本号（nobump / no-bump）
@@ -291,6 +293,10 @@ scripts\build-harmony-signed.bat nobump
 
 # 参数可组合，例如：先清缓存再出包并发布
 scripts\build-harmony-signed.bat clean publish
+
+# 鸿蒙包单独补发 Release（不构建、不改版本号；只上传未签名 HAP）
+scripts\gh-release-harmony.bat
+scripts\gh-release-harmony.bat check        # 预检，只读
 ```
 
 > 鸿蒙构建依赖 DevEco Studio（hvigor + HarmonyOS SDK），脚本会自动定位工具链路径。
@@ -393,7 +399,9 @@ ClipboardMerger/
 │   ├── build.bat                      # 一键构建脚本（Android，含 release 发布）
 │   ├── build-harmony.bat              # 一键构建脚本（鸿蒙，含 release 发布）
 │   ├── clean.bat                      # 清理脚本（Android + 鸿蒙）
-│   ├── gh-release.bat                 # 单独补发 GitHub Release
+│   ├── gh-release.bat                 # 单独补发 GitHub Release（Android APK）
+│   ├── gh-release-harmony.bat         # 单独补发 GitHub Release（鸿蒙，只传未签名 HAP）
+│   ├── build-harmony-signed.bat       # 鸿蒙发布签名出包（HAP + .app，可选 publish）
 │   ├── deploy-harmony.bat             # 鸿蒙版装机脚本 (hdc)
 │   └── tools/
 │       ├── tee-log.ps1                # 日志 tee 包装器

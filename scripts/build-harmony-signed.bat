@@ -47,11 +47,15 @@ title 剪集 HarmonyOS 发布签名出包
 REM ============================================
 REM  剪集 鸿蒙「发布签名」出包脚本（HAP + .app；只有 .hap 会通过 gh 上传）
 REM
-REM  用法: build-harmony-signed.bat          增量出包（**自动 +1 版本号**）
-REM        build-harmony-signed.bat clean    先清 harmony 构建产物，再全量出包
-REM        build-harmony-signed.bat publish  出包后把 .hap 上传到 GitHub Release（.app 仅本地）
+REM  用法: build-harmony-signed.bat          增量出包（**自动 +1 版本号**）并**默认发布到 GitHub Release**
+REM        build-harmony-signed.bat clean    先清 harmony 构建产物，再全量出包 + 发布
+REM        build-harmony-signed.bat nopublish 只出包、不发 Release（本地/离线出包用）
+REM        build-harmony-signed.bat publish  显式发布（已是默认行为，保留兼容）
 REM        build-harmony-signed.bat nobump   出包但不递增版本号（本地重复调试用）
 REM        build-harmony-signed.bat help     显示帮助
+REM
+REM  发布: 默认出包后就把「未签名」.hap 推到 tag harmony-v<版本> 的 Release
+REM        （签名 .hap 与 .app 仅本地，永不上传）；不想发就带 nopublish。
 REM
 REM  版本号: 每次出包都调 tools\bump-version-harmony.ps1 把 app.json5 的 versionName
 REM          patch +1、versionCode 同步 +1（AGC 拒绝重复版本号的测试版本，见 2026-11-13 提交被拒）。
@@ -60,9 +64,12 @@ REM
 REM  签名来源: %SIGN_DIR% 下的 .p12 / .cer / .p7b
 REM            （密钥别名与加密口令在 harmony\build-profile.json5 的 signingConfigs 里，
 REM              本脚本不保存任何明文口令）
-REM  产物: build\harmony\JianJi-HarmonyOS-v<版本>-<build>-release.hap   ← gh 只传这个
+REM  产物: build\harmony\JianJi-HarmonyOS-v<版本>-<build>-release.hap   ← 签名包，仅本地/AGC
+REM        build\harmony\JianJi-HarmonyOS-v<版本>-<build>-unsigned.hap  ← gh 只传这个
 REM        build\harmony\JianJi-HarmonyOS-v<版本>-<build>-release.app   ← 仅本地
 REM        <仓库根>\JianJi-HarmonyOS-v<版本>-<build>-release.app        ← 仅本地（已 gitignore）
+REM        未签名 HAP 取构建自带的 *unsigned*.hap（entry-default-unsigned.hap）；
+REM        签名数据附加在 hap 尾部、无法去掉，所以签名包绝不冒充未签名包上传。
 REM  说明: 默认目录不是 D:\Tools\DevTools\hmos\signature_fabu_pro 时，
 REM        先 set "SIGN_DIR=<签名目录>" 再运行
 REM ============================================
@@ -79,7 +86,8 @@ for %%i in ("%HAP_OUT%") do set "HAP_OUT=%%~fi"
 for %%i in ("%BUILD_PROFILE%") do set "BUILD_PROFILE=%%~fi"
 if not defined SIGN_DIR set "SIGN_DIR=D:\Tools\DevTools\hmos\signature_fabu_pro"
 set "_CM_DO_CLEAN="
-set "_CM_DO_PUBLISH="
+REM 默认出包后直接发布到 GitHub Release；nopublish 可关闭
+set "_CM_DO_PUBLISH=1"
 set "_CM_NO_BUMP="
 set "_CM_BUMP_NOTE="
 set "GH_EXE=C:\Program Files\GitHub CLI\gh.exe"
@@ -91,7 +99,9 @@ if /i "%~1"=="help"  goto :usage
 if /i "%~1"=="-h"    goto :usage
 if /i "%~1"=="/?"    goto :usage
 if /i "%~1"=="clean"   set "_CM_DO_CLEAN=1"
-if /i "%~1"=="publish" set "_CM_DO_PUBLISH=1"
+if /i "%~1"=="publish"   set "_CM_DO_PUBLISH=1"
+if /i "%~1"=="nopublish" set "_CM_DO_PUBLISH="
+if /i "%~1"=="no-publish" set "_CM_DO_PUBLISH="
 if /i "%~1"=="nobump"  set "_CM_NO_BUMP=1"
 if /i "%~1"=="no-bump" set "_CM_NO_BUMP=1"
 shift
@@ -103,17 +113,20 @@ goto :main
 :usage
 echo.
 echo 用法:
-echo   build-harmony-signed.bat          增量出包（release 模式 + 发布签名，出 HAP + .app，版本号 +1）
-echo   build-harmony-signed.bat clean    先清 harmony 构建产物，再全量出包（版本号 +1）
-echo   build-harmony-signed.bat publish  出包后只把 .hap 上传到 GitHub Release（.app 仅本地）
-echo   build-harmony-signed.bat nobump   出包但不递增版本号（本地重复调试用）
-echo   build-harmony-signed.bat help     显示本帮助
+echo   build-harmony-signed.bat           增量出包（release + 发布签名，出 HAP + .app，版本号 +1）并发布
+echo   build-harmony-signed.bat clean     先清 harmony 构建产物，再全量出包 + 发布（版本号 +1）
+echo   build-harmony-signed.bat nopublish 只出包、不发 GitHub Release（离线/本地调试用）
+echo   build-harmony-signed.bat publish   显式发布（已是默认行为，保留兼容）
+echo   build-harmony-signed.bat nobump    出包但不递增版本号（本地重复调试用）
+echo   build-harmony-signed.bat help      显示本帮助
 echo.
-echo 参数可组合，例如: build-harmony-signed.bat clean publish
+echo 默认出包后就把「未签名」.hap 推到 tag harmony-v 版本号的 Release；不想发就加 nopublish。
+echo 参数可组合，例如: build-harmony-signed.bat clean（出包 + 发布）
 echo.
 echo 签名目录: %SIGN_DIR%（可 set "SIGN_DIR=..." 覆盖）
 echo 产物目录: build\harmony（.app 另拷一份到仓库根）
-echo .app 已 gitignore：不会进 git，也不会被 gh 上传；gh 只上传 .hap。
+echo .app 与签名 HAP 都不上传：gh 只上传构建自带的未签名 HAP（*unsigned*.hap），
+echo 签名数据附加在 hap 尾部、去不掉，所以签名包不会冒充未签名包上传。
 echo 本脚本不做 git commit / push / tag；但每次出包会改写 harmony\AppScope\app.json5 的版本号，
 echo 提测/上架前记得把 app.json5 一起提交（AGC 不接受重复版本号的测试版本）。
 echo.
@@ -260,12 +273,19 @@ echo       鸿蒙版本: v%H_VNAME% (build %H_VCODE%)
 set "HAP_FILE="
 set "HAP_UNSIGNED="
 REM /o-d = 按修改时间新→旧：取最新的已签名 HAP，避免捡到上一次的旧产物
+REM 同时顺手记下最新的未签名 HAP（publish 上传用），两者独立收集
 for /f "delims=" %%f in ('dir /b /s /o-d "%HARMONY_DIR%\entry\build\*.hap" 2^>nul') do (
     if not defined HAP_FILE (
         echo %%f | findstr /i "unsigned" >nul
-        if errorlevel 1 (set "HAP_FILE=%%f") else (if not defined HAP_UNSIGNED set "HAP_UNSIGNED=%%f")
+        if errorlevel 1 set "HAP_FILE=%%f"
     )
+    if not defined HAP_UNSIGNED (
+        echo %%f | findstr /i "unsigned" >nul
+        if not errorlevel 1 set "HAP_UNSIGNED=%%f"
+    )
+    if defined HAP_FILE if defined HAP_UNSIGNED goto :hap_scan_done
 )
+:hap_scan_done
 if defined HAP_FILE goto :hap_ready
 echo [错误] 没找到已签名 HAP（签名没打上）
 echo        检查 harmony\build-profile.json5: products[].signingConfig 必须是 "default"（PIT-037）
@@ -380,22 +400,31 @@ if defined APP_SHA echo  APP SHA256 : %APP_SHA%
 echo  装机   : scripts\deploy-harmony.bat "build\harmony\%HAP_NAME%"
 echo.
 echo  注意: release profile 只能安装在 AGC 允许的设备上；本脚本不做 git commit/push/tag。
+echo        接下来默认发布到 GitHub Release（只上传未签名 HAP，签名 HAP / .app 留本地）；
+echo        不想发就重跑并带 nopublish。
 echo ============================================
-if not defined _CM_DO_PUBLISH goto :summary_done
+if not defined _CM_DO_PUBLISH goto :summary_skip_publish
 call :publish_hap
 if errorlevel 1 exit /b 1
+goto :summary_done
+:summary_skip_publish
+echo.
+echo  [跳过发布] 指定了 nopublish，本次没有上传 GitHub Release
 :summary_done
 call :countdown
 exit /b 0
 
 REM ============================================
-REM  发布到 GitHub Release：只上传 .hap（.app 仅本地，永不入 git / 不上 Release）
+REM  发布到 GitHub Release：只上传「未签名」.hap
+REM  签名 .hap 与 .app 仅本地（永不入 git / 不上 Release）
 REM  用法: build-harmony-signed.bat publish
+REM  未签名 HAP 来源: 构建自带的 *unsigned*.hap（entry-default-unsigned.hap）；
+REM                   没有就直接报错（签名块在 ZIP 中央目录前，去不掉）
 REM ============================================
 :publish_hap
 echo.
 echo ============================================
-echo  上传 GitHub Release（只传 .hap）
+echo  上传 GitHub Release（只传未签名 .hap）
 echo ============================================
 if not exist "%GH_EXE%" (
     echo [错误] 未找到 GitHub CLI: %GH_EXE%
@@ -410,6 +439,23 @@ if errorlevel 1 (
 "%GH_EXE%" auth status >nul 2>&1
 if errorlevel 1 echo [警告] gh 登录自检未通过（网络瞬断也会导致），继续尝试上传
 
+set "UNSIGNED_NAME=JianJi-HarmonyOS-v%H_VNAME%-%H_VCODE%-unsigned.hap"
+set "UNSIGNED_OUT=%HAP_OUT%\%UNSIGNED_NAME%"
+if defined HAP_UNSIGNED (
+    echo       未签名产物: %HAP_UNSIGNED%（构建自带，直接使用）
+    copy /y "%HAP_UNSIGNED%" "%UNSIGNED_OUT%" >nul
+    if errorlevel 1 (
+        echo [错误] 复制未签名 HAP 失败: %UNSIGNED_OUT%
+        exit /b 1
+    )
+) else (
+    echo [错误] 构建没有产出未签名 HAP（*unsigned*.hap），publish 无法继续
+    echo        签名数据附加在 hap 文件尾部（不是 zip 条目），签名包无法去签名。
+    echo        期望产物: %HARMONY_DIR%\entry\build\default\outputs\default\entry-default-unsigned.hap
+    echo        请确认 hvigor 构建完整后重跑本脚本。
+    exit /b 1
+)
+
 set "TAG=harmony-v%H_VNAME%"
 set "_CM_DIRTY="
 for /f "delims=" %%s in ('git status --porcelain 2^>nul') do set "_CM_DIRTY=1"
@@ -417,15 +463,16 @@ if defined _CM_DIRTY echo [提示] 工作区有未提交改动：Release 的 tag
 
 echo       标签   : %TAG%
 echo       仓库   : %GH_REPO%
-echo       上传   : %HAP_NAME%
-echo       不上传 : %APP_NAME%（.app 仅本地）
+echo       上传   : %UNSIGNED_NAME%（未签名）
+echo       不上传 : %HAP_NAME%（签名 HAP，仅本地/AGC）、%APP_NAME%（.app 仅本地）
 
+set "REL_NOTES=剪集 鸿蒙版 %TAG%（build %H_VCODE%，未签名 HAP）"
 "%GH_EXE%" release view "%TAG%" --repo "%GH_REPO%" >nul 2>&1
 if errorlevel 1 (
-    "%GH_EXE%" release create "%TAG%" "%HAP_OUT%\%HAP_NAME%" --title "%TAG%" --notes "剪集 鸿蒙版 %TAG%（build %H_VCODE%，发布签名）" --repo "%GH_REPO%"
+    "%GH_EXE%" release create "%TAG%" "%UNSIGNED_OUT%" --title "%TAG%" --notes "%REL_NOTES%" --repo "%GH_REPO%"
 ) else (
-    "%GH_EXE%" release edit "%TAG%" --title "%TAG%" --notes "剪集 鸿蒙版 %TAG%（build %H_VCODE%，发布签名）" --repo "%GH_REPO%" >nul 2>&1
-    "%GH_EXE%" release upload "%TAG%" "%HAP_OUT%\%HAP_NAME%" --clobber --repo "%GH_REPO%"
+    "%GH_EXE%" release edit "%TAG%" --title "%TAG%" --notes "%REL_NOTES%" --repo "%GH_REPO%" >nul 2>&1
+    "%GH_EXE%" release upload "%TAG%" "%UNSIGNED_OUT%" --clobber --repo "%GH_REPO%"
 )
 if errorlevel 1 (
     echo [错误] gh 发布失败（检查 gh auth status / 网络 / 标签 %TAG%）
@@ -434,9 +481,12 @@ if errorlevel 1 (
 echo       Release 链接:
 "%GH_EXE%" release view "%TAG%" --repo "%GH_REPO%" --json url --template "{{.url}}"
 echo.
-echo       Release 附件（只应有 .hap）:
+echo       Release 附件（只应有未签名 .hap）:
 "%GH_EXE%" release view "%TAG%" --repo "%GH_REPO%" --json assets --jq ".assets[].name"
 exit /b 0
+
+REM 未签名 HAP 只有构建能产出：hvigor 会同时写 entry-default-unsigned.hap，
+REM 签名数据附加在 hap 尾部（不在 zip 条目里），所以签名包无法通过删条目去签名。
 
 REM ============================================
 REM  递增鸿蒙版本号：harmony\AppScope\app.json5

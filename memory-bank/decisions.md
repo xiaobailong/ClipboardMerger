@@ -223,8 +223,10 @@
 - 追加（2026-11-10，用户明确「.app 和 .hap 都需要，但只有 .hap 上传 git、通过 gh」）: 脚本加 `publish` 子命令 —— 出包（HAP + .app）并校验后，只把 **HAP** 用 `gh release create` / `release upload --clobber` 传到 `xiaobailong/ClipboardMerger` 的 `harmony-v<版本>`；`.app` 只留本地（`build\harmony` + 仓库根），`.gitignore` 已含 `*.app` ⇒ 永不进 git、永不上 Release。`publish` **不做 git commit/push/tag**（Release 的 tag 由 gh 指向远端 HEAD；工作区有未提交改动时脚本打印提示）；要连源码一起发布时先走 `build-harmony.bat release` 或手动提交。验证: `build-harmony-signed.bat help` 列出 `publish`；发布逻辑两条分支（Release 已存在 / 不存在）都只调 `release upload <HAP>`，命令里不含 `.app`；`.app` 在 `git status` 中不出现。
 
 - 发布实测（2026-11-10）: 源码提交 `580bb05` 推 `main`，tag `harmony-v1.101.0` → `580bb05`（远端一致）；`build-harmony-signed.bat publish` 建 Release https://github.com/xiaobailong/ClipboardMerger/releases/tag/harmony-v1.101.0 ，附件**只有** `JianJi-HarmonyOS-v1.101.0-20100-release.hap`（`.app` 未上传、未入 git，本地 110KB 留仓库根与 `build\harmony`）。同时修正发布后列附件的 jq：`--json assets --jq ".assets[].name"`（原 `.[]` 会报 `expected an object but got: array`）。
+- 追加（2026-11-14，用户要求「发布只推未签名的 hap」）: `publish` 上传目标从签名 HAP 改为**未签名 HAP** `build\harmony\JianJi-HarmonyOS-v<ver>-<code>-unsigned.hap`，只取 hvigor 构建自带的 `entry-default-unsigned.hap`（HAP 收集循环改为 signed/unsigned 独立收集，原来只认第一个命中，unsigned 会被漏掉）；找不到未签名产物时**直接报错**，绝不拿签名包顶替。签名 HAP 与 `.app` 仅本地，Release 说明改为「未签名 HAP」。理由: 公开仓库不放个人证书签出的包，签名包只用于本机装机 / AGC 上架。（同日修正：初版想「删 zip 里的 `signature/` + `META-INF/` 条目去签名」，实测 `hap-sign-tool verify-app` 报 `No Hap Signing Block before ZIP Central Directory` —— 签名块附加在 ZIP 中央目录之前、不在条目里，删条目只会重写一遍包，签名并未移除。）
 
 ## ADR-021 鸿蒙 `versionCode` 统一抬基数 `1000000`（越过 AGC 历史版本 100013）
+
 - 日期: 2026-11-10 | 状态: 已采纳
 - 背景: AGC 拒绝上传 `versionCode 20100`，理由是低于已发布测试版本 `100013`（见 `ISSUE-014`）。鸿蒙 `versionCode` 必须严格单调且大于所有历史值，而旧公式 `major*10000 + minor*100 + patch` 在 1.x 上最多到 `2xxxx`。
 - 决策: 保持 versionName 语义不变（每包 patch +1、minor/patch 满 100 进位），只把 versionCode 抬基数：`versionCode = 1000000 + major*10000 + minor*100 + patch`。真源仍是 `harmony/AppScope/app.json5`，由 `scripts/tools/bump-version-harmony.ps1` 写入。
@@ -232,4 +234,13 @@
 - 备选与为何不选: ①把 versionName 跳到 10.x 让旧公式越过 100013 —— versionName 给人看（Android 端 `1.94.0`），跳档会打乱两端对齐；②只手工改 `app.json5` 的 versionCode —— 下次 bump 用旧公式覆盖，必复发；③versionCode 改纯 `+1` 递增 —— 与 versionName 脱钩，得额外状态文件，且脚本无法从 JSON 推。
 - 影响与约束: ①鸿蒙包 versionCode 变 7 位（`2.0.1` → `1020001`），工具只比大小，无副作用；②Android 端不受影响（`bump_version.ps1` + `build.gradle.kts` 各自算）；③本次 bump 顺带把 versionName 从 `1.101.0` 带到 `2.0.1`（minor 101 ≥ 100 进位到 major 2）；④若日后 AGC 出现更大历史值（≥ 百万），继续抬基数而不是改 versionName。
 - 验证: 见 `ISSUE-014`（`pack.info` = `code 1020001 / name 2.0.1`，HAP `.app` 均校验通过）。
+
+## ADR-022 鸿蒙「单独补发 Release」独立成 `gh-release-harmony.bat`（对齐 Android 的 `gh-release.bat`）
+- 日期: 2026-11-14 | 状态: 已采纳
+- 背景: Android 有 `scripts\gh-release.bat` 可以「不重新构建、只补发 Release」（读版本 → tag 指向 HEAD → push → 创建/更新 Release 上传 APK）；鸿蒙侧只有 `build-harmony.bat release`（要整条构建 + commit + push）和 `build-harmony-signed.bat publish`（出包顺带发），想单独补发一次 Release 就得白跑一遍构建。
+- 决策: 新增 `scripts\gh-release-harmony.bat`，与 Android 版同构：①版本取 `harmony\AppScope\app.json5`（`tools\harmony-version.js`），tag 固定 `harmony-v<versionName>`；②tag 指向 HEAD，远端 tag 已指向 HEAD 时跳过打标签/推标签（tag 推送走 SSH，ADR-011）；③必要时先 push 当前分支，`git push` 3 次重试；④`gh release create` / `release edit` + `release upload --clobber`，更新前用 REST 按 id 清同名旧资产（PIT-027 的 422）；⑤`check` 只读预检、支持 `[tag] [hap]` 显式参数、`_CM_NO_PAUSE=1` 跳过倒计时；⑥**只上传未签名 HAP**，源优先 hvigor 的 `entry-default-unsigned.hap`，其次 `build\harmony\*unsigned*.hap`；只有签名包时直接报错（见 ADR-020 追加）。
+- 理由: 「出包 / 装机 / 发布」三件事本就分离（ADR-016 / ADR-020），发布环节不该被绑定在一次完整构建上；两端脚本同名同参数，切换平台不用重新学。
+- 备选与为何不选: ①继续用 `build-harmony-signed.bat publish` —— 会顺带 +1 版本号并重跑全量构建，补发一个 Release 代价过大；②让 Android 的 `gh-release.bat` 兼容鸿蒙 —— 两端的版本真源、产物名、tag 前缀全不同，塞进一个脚本只会互相干扰。
+- 影响与约束: ①脚本不构建、不改版本号、不提交源码，工作区有改动时只提示；②上传的 HAP 必须是 `*unsigned*`，否则直接报错；③**坑（已修）**: `gh api repos/<repo>/commits/<tag> --jq .sha` 在 tag 不存在时会把 422 的 JSON body 打到 stdout，`set "REMOTE_TAG_SHA=<json>"` 里的双引号会毁掉下一行 `if`，报 `commit was unexpected at this time` ⇒ 反引号命令后接 `findstr /r /c:"^[0-9a-f][0-9a-f]*$"` 只留裸 sha；Android 的 `gh-release.bat` 同一处也一并修了。④**坑**: 新写/编辑过的 `.bat` 必须是 CRLF，LF-only 会被 cmd 解析成行漂移（报一堆 `'xxx' is not recognized`），`chcp 65001` 也救不回来。
+- 验证: `gh-release-harmony.bat help` / `check` 实跑（`check` 全程只读：识别出 `entry-default-unsigned.hap` 279,212 B，tag 判定为「不存在，将新建」，打印出的命令不含签名包）；`hap-sign-tool verify-app` 对 `entry-default-unsigned.hap` 返回 `signature not found` / `No Hap Signing Block before ZIP Central Directory`，与「签名块在 ZIP 中央目录之前」的判断一致。
 

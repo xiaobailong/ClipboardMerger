@@ -56,7 +56,8 @@ harmony/
 | `scripts\build-harmony.bat` | 只构建：`hvigorw assembleHap` → 产物收成 `build\harmony\JianJi-HarmonyOS-v<版本>-<build>.hap`（**不动 git**） |
 | `scripts\build-harmony.bat release` | 递增鸿蒙版本号 → 构建 → `git commit/push` → tag `harmony-v<版本>` → `gh release create` 上传 HAP |
 | `scripts\build-harmony.bat clean` | 清理 `harmony\.hvigor`、`harmony\entry\build`、`build\harmony`、根目录 `*.hap` |
-| `scripts\build-harmony-signed.bat` | **发布签名出包（HAP + .app）**：递增版本号 → 检查 `signature_fabu_pro` 材料 → `build-info.js release` → `hvigorw assembleHap` + `assembleApp`（`buildMode=release`）→ HAP 收成 `build\harmony\JianJi-HarmonyOS-v<版本>-<build>-release.hap`、.app 收成同名 `-release.app` 并**额外拷一份到仓库根**（文件名带版本号）→ `hap-sign-tool verify-app` 分别校验；每次出包**自动递增 versionName/versionCode**（AGC 不接受重复版本号，提测/上架前记得提交 `app.json5`）；加 `clean` 先清 harmony 缓存；加 **`publish`** 时只把 **.hap** 上传 GitHub Release（`.app` 仅本地、已 gitignore，永不入 git / 不上传）；加 **`nobump`** 不递增版本号（本地重复调试用）；参数可组合（如 `clean publish`）；不做 git commit/push/tag |
+| `scripts\build-harmony-signed.bat` | **发布签名出包（HAP + .app）**：递增版本号 → 检查 `signature_fabu_pro` 材料 → `build-info.js release` → `hvigorw assembleHap` + `assembleApp`（`buildMode=release`）→ HAP 收成 `build\harmony\JianJi-HarmonyOS-v<版本>-<build>-release.hap`、.app 收成同名 `-release.app` 并**额外拷一份到仓库根**（文件名带版本号）→ `hap-sign-tool verify-app` 分别校验；每次出包**自动递增 versionName/versionCode**（AGC 不接受重复版本号，提测/上架前记得提交 `app.json5`）；加 `clean` 先清 harmony 缓存；加 **`publish`** 时只把 **未签名 .hap**（`JianJi-HarmonyOS-v<版本>-<build>-unsigned.hap`）上传 GitHub Release：源是 hvigor 产出的 `entry-default-unsigned.hap`（签名数据附加在 hap 尾部、删 zip 条目去不掉，所以签名包无法冒充未签名包）；签名 HAP 与 `.app` 仅本地（已 gitignore，永不入 git / 不上传）；加 **`nobump`** 不递增版本号（本地重复调试用）；参数可组合（如 `clean publish`）；不做 git commit/push/tag |
+| `scripts\gh-release-harmony.bat` | **鸿蒙包单独补发 Release**（不构建、不改版本号）：读 `app.json5` 版本 → tag `harmony-v<版本>` 指向 HEAD → 必要时 push 当前分支 / 打推标签 → 创建/更新 Release 并上传**未签名** HAP；`check` 为只读预检；`[tag] [hap]` 可显式指定；只接受 `*unsigned*.hap`（来自 `harmony\entry\build\...\entry-default-unsigned.hap`），传签名包直接报错 |
 
 - 日志：`build\logs\harmony_<ts>.log`（复用 `scripts\tools\tee-log.ps1`，逐行先落盘再回显，同 `scripts\build.bat`）
 - 版本号真源：`harmony\AppScope\app.json5`（工具 `scripts\tools\harmony-version.js`）；与 Android 的 `version.properties` **各自独立**
@@ -154,7 +155,8 @@ REM 3) 本地签名 + 校验 + 装机（<密码> 见 %SHARED%\hmos-dev.pass）
 2. **面板高度**：`resize(width,height)`（**px**）要在 **`setUiContent()` 之后**调用才有效，且 `inputStart`/`keyboardShow` 各补一次；页面根节点高度用 `px2vp(屏高 × 比例)` 撑住（面板尺寸跟随内容）。比例要存在**键盘进程自己的** preferences 里（见下条），改完 `resize` 当场生效。
 3. **剪贴板权限**：`READ_PASTEBOARD` 需要 ACL；本项目签名 profile 已带，`requestPermissionsFromUser` 实测直接 granted。
 4. **⚠️ preferences 沙箱（本项目最贵的一课）**：输入法 Extension 受官方「基础访问模式」约束，**跑在独立进程 + 独立沙箱** ⇒ 它读不到 App 写的 `preferences`（反之亦然）。表现：App 里设「切换目标=小艺」，键盘「切换」却切到百度；App 改高度键盘不变；键盘写的报告/日志 App 永远读不到。
-   **定论**：凡是"键盘要用的设置"（切换目标 / 键盘高度 / 键盘皮肤 / 键盘日志开关）**一律放在键盘面板内的 ⚙ 设置**里，由键盘进程自己读写；跨进程通信只能走 **公共事件**（本项目 `model/EventBus.ets`，事件 `com.example.clipboardmerger.HIST_SYNC`：`add`/`remove`/`clear`/`snapshot`）。
+   **定论**：凡是"键盘要用的设置"（切换目标 / 键盘高度 / 键盘皮肤 / 键盘日志开关）**以键盘那份为准**，由键盘进程自己读写；跨进程通信只能走 **公共事件**（本项目 `model/EventBus.ets`，事件 `com.example.clipboardmerger.HIST_SYNC`：`add`/`remove`/`clear`/`snapshot`）。
+   已通过公共事件实现**设置同步**（`settingsPull`/`settingsSnapshot`/`settingsSet`，见 PIT-052）：App 打开/回前台时拉设置快照对齐，App 内改设置单条回写键盘；**日志开关除外**（两端各管各的，不参与同步）。
    - **DataShare 走不通**：本版本 SDK 里 `DataShareExtensionAbility` 类根本不存在（全 api 目录只有 `bundleManager` 的 AbilityType 枚举里出现过该字符串），`@ohos.data.dataShare.d.ts` 里连 `DataShareHelper` 都没有 ⇒ 不要按老文档做。
    - **无障碍 / 前台应用检测走不通**：鸿蒙 7 设置里没有无障碍服务入口；`@ohos.resourceschedule.usageStatistics.d.ts` 是空壳（无 `queryBundleEvents`）；老的 `@ohos.bundleState.d.ts` 要系统权限 `ohos.permission.BUNDLE_ACTIVE_INFO`。
      **结论**：无法实现"进入某个 App 时提醒" ⇒ 依赖它的**绑定App、通知提醒、后台保活（WorkScheduler）、自启动/电池权限项已全部移除**（保留只会在 UI 上误导用户）。

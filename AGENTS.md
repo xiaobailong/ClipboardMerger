@@ -39,7 +39,9 @@ ClipboardMerger/
 │   ├── build.bat                        # Android 一键构建脚本
 │   ├── build-harmony.bat                # 鸿蒙一键构建脚本
 │   ├── clean.bat                        # 清理构建产物
-│   ├── gh-release.bat                   # 单独补发 GitHub Release
+│   ├── gh-release.bat                   # 单独补发 GitHub Release（Android APK）
+│   ├── gh-release-harmony.bat           # 单独补发 GitHub Release（鸿蒙未签名 HAP）
+│   ├── build-harmony-signed.bat         # 鸿蒙发布签名出包（HAP + .app）
 │   ├── deploy-harmony.bat               # 鸿蒙版装机脚本
 │   └── tools/
 │       ├── tee-log.ps1                  # 日志 tee 包装器

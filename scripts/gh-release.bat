@@ -197,7 +197,10 @@ set "_RT_N=0"
 
 :tag_check_try
 set /a _RT_N+=1
-for /f "usebackq delims=" %%a in (`call "%GH_EXE%" api "repos/%GH_REPO%/commits/%GH_TAG%" --jq .sha 2^>nul`) do set "REMOTE_TAG_SHA=%%a"
+REM gh api prints a 422 JSON body on stdout when the tag is missing; that body has
+REM quotes and breaks the next `if` ("… was unexpected at this time"), so keep only
+REM a bare hex sha.
+for /f "usebackq delims=" %%a in (`call "%GH_EXE%" api "repos/%GH_REPO%/commits/%GH_TAG%" --jq .sha 2^>nul ^| findstr /r /c:"^[0-9a-f][0-9a-f]*$"`) do set "REMOTE_TAG_SHA=%%a"
 if not "%REMOTE_TAG_SHA%"=="" goto :tag_check_done
 if %_RT_N% lss 3 (
     ping -n 3 127.0.0.1 > nul
