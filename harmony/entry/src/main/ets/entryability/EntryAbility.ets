@@ -18,7 +18,8 @@ export default class EntryAbility extends UIAbility {
     Logger.init(this.context);
     ThemeStore.init(this.context);
     ClipboardStore.init(this.context);
-    RecycleBinStore.init(this.context);
+    // App 侧只是键盘回收站的镜像（authority=false）：过期清理交给键盘进程
+    RecycleBinStore.init(this.context, false);
     Logger.d('EntryAbility.onCreate');
   }
 

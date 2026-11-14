@@ -1,12 +1,34 @@
 import { inputMethod, inputMethodEngine, InputMethodExtensionContext } from '@kit.IMEKit';
 import { display } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
-import { ClipItem, ClipboardStore } from '../../model/ClipboardStore';
-import { EventBus, HistEvent, SRC_APP, SRC_IME } from '../../model/EventBus';
+import { ClipItem, ClipboardStore, HistRemoval } from '../../model/ClipboardStore';
+import {
+  EventBus,
+  HistEvent,
+  OP_ACK,
+  OP_HIST_REMOVE_MANY,
+  OP_RECYCLE_PULL,
+  OP_RECYCLE_REMOVE,
+  OP_RECYCLE_SNAPSHOT,
+  OP_SETTINGS_PULL,
+  OP_SETTINGS_SET,
+  OP_SETTINGS_SNAPSHOT,
+  SRC_APP,
+  SRC_IME
+} from '../../model/EventBus';
 import { Logger } from '../../model/Logger';
-import { ImeSettings } from '../../model/ImeSettings';
-import { ThemeStore } from '../../model/Theme';
-import { RecycleBinStore } from '../../model/RecycleBin';
+import { ImeItem, ImeSettings } from '../../model/ImeSettings';
+import { THEME_ANDROID, THEME_HARMONY, ThemeStore } from '../../model/Theme';
+import { RecycleBinStore, RecycleItem, RecycleOp } from '../../model/RecycleBin';
+import { ChunkPayload, SNAP_HIST, SNAP_RECYCLE, SyncChunk } from '../../model/SyncChunk';
+import {
+  SET_KEY_HEIGHT,
+  SET_KEY_RETENTION,
+  SET_KEY_TARGET,
+  SET_KEY_THEME,
+  SettingChange,
+  SettingsSync
+} from '../../model/SettingsSync';
 
 /** 输入法面板要加载的页面（路径相对 ets 目录，与 main_pages.json 保持一致） */
 const PANEL_PAGE: string = 'InputMethodExtensionAbility/pages/Keyboard';
@@ -48,18 +70,18 @@ export class KeyboardController {
     ImeSettings.init(context);
     // 键盘进程自己的回收站（独立沙箱）：键盘侧删除/清空的内容在这里留底，
     // App 进程收不到同步事件（进程没起来/事件丢失）时也能从键盘这份找回（PIT-039）
-    RecycleBinStore.init(context);
+    RecycleBinStore.init(context, true);
+    // 设置同步（PIT-052/053）：键盘侧要记「自己最近一次改设置的时间」，用来挡住过期的补发
+    SettingsSync.init(context);
     // App → 键盘 的历史同步：App 里「清空全部」「左滑删除」等操作要同步过来
     // （只处理 src=app 的事件，避免处理自己发的而回声）
     EventBus.subscribe((e: HistEvent) => {
       KeyboardController.applyAppEvent(e);
     });
-    // 键盘侧**任何**历史变化（新采集 / 删除 / 清空）都立刻广播给 App —— 这是 IME→App 的「及时」通道
-    // （以前只在面板重建时推一次，键盘开着期间新复制的内容到不了 App）
-    ClipboardStore.setChangeListener((op: string, text: string, ts: number) => {
-      EventBus.publish(op, text, ts, SRC_IME);
-      Logger.d(`storeChange → App: ${op} (len=${text.length})`);
-    });
+    // ⚠️ 不再把键盘侧的历史变化广播给 App：键盘历史/回收站都是**权威源**，
+    // App 打开页面时拉一次全量（'pull' → 'snapshot' → 整份覆盖），键盘操作无需回写 App。
+    // （所以这里也不注册 ClipboardStore.setChangeListener，避免「键盘一操作 App 列表就跟着变」）
+    ClipboardStore.setChangeListener(undefined);
     // 告诉 App「键盘进程刚起来」：App 会把离线期间攒下的删除/清空补发一次
     EventBus.publish('hello', '', Date.now(), SRC_IME);
     Logger.d('KeyboardController.onCreate: start');
@@ -174,6 +196,51 @@ export class KeyboardController {
       return;
     }
     this.resizePanel(this.panel);
+  }
+
+  /**
+   * App 侧改了一条设置（`settingsSet`）⇒ 写进键盘这份。
+   * 只处理改动的那一个 key，避免拿 App 的旧值把键盘侧别的设置盖掉（见 PIT-052）。
+   * `ts` = App 改动发生的时间：键盘侧在它之后自己改过设置就忽略这条（补发保护，PIT-053）。
+   */
+  applySetting(json: string, ts: number): void {
+    const ch: SettingChange | undefined = SettingsSync.parseChange(json);
+    if (ch === undefined) {
+      Logger.w('applySetting ← App: payload 解析失败');
+      return;
+    }
+    const last: number = SettingsSync.lastLocalChange();
+    if (ts > 0 && ts <= last) {
+      Logger.d(`applySetting ← App: 忽略过期改动 ${ch.key}=${ch.value}（ts=${ts} <= 键盘侧 ${last}）`);
+      return;
+    }
+    if (ch.key === SET_KEY_THEME) {
+      ThemeStore.set(ch.value === THEME_ANDROID ? THEME_ANDROID : THEME_HARMONY);
+    } else if (ch.key === SET_KEY_HEIGHT) {
+      const r: number = Number.parseFloat(ch.value);
+      if (!Number.isNaN(r) && r > 0) {
+        this.applyHeightRate(r);
+      }
+    } else if (ch.key === SET_KEY_TARGET) {
+      if (ch.value === '') {
+        ImeSettings.clearTarget();
+      } else {
+        try {
+          const item: ImeItem = JSON.parse(ch.value) as ImeItem;
+          ImeSettings.setTarget(item);
+        } catch (err) {
+          Logger.w('applySetting ← App: target 解析失败');
+        }
+      }
+    } else if (ch.key === SET_KEY_RETENTION) {
+      const d: number = Number.parseInt(ch.value, 10);
+      if (!Number.isNaN(d)) {
+        RecycleBinStore.setRetentionDays(d);
+      }
+    }
+    // 记住"这条改动已生效"的时刻，之后补发来的更早改动会被忽略
+    SettingsSync.markLocalChange(ts > 0 ? ts : Date.now());
+    Logger.d(`applySetting ← App: ${ch.key}=${ch.value}`);
   }
 
   /** 键盘进程自己的日志开关（键盘进程是独立沙箱，App 侧那个开关管不到它） */
@@ -323,55 +390,62 @@ export class KeyboardController {
       return;
     }
     if (e.op === 'pull') {
-      // App 刚回到前台（onPageShow）：把键盘这份全量推过去，App 侧只做「缺的补上」的合并
+      // App 打开剪切板 / 回到前台：键盘历史是权威源 ⇒ 回全量，App 侧整份覆盖
       KeyboardController.publishSnapshot();
       return;
     }
-    if (e.op === 'clear') {
-      // App 侧清空：键盘这份同样留底进回收站（App 自己那份由 App 进程负责入库）
-      if (ClipboardStore.getItems().length > 0) {
-        RecycleBinStore.moveToRecycleBin(ClipboardStore.getItems().slice(), 'ime');
+    if (e.op === OP_RECYCLE_PULL) {
+      // App 打开回收站：键盘回收站是权威源 ⇒ 直接把键盘这份全量回过去（App 整份覆盖它的镜像）
+      if (!RecycleBinStore.isReady()) {
+        Logger.w('recyclePull ← App: 键盘回收站尚未就绪，不回快照（App 保留本地缓存）');
+        return;
       }
-      const snap: ClipItem[] = ClipboardStore.parseSnapshot(e.text);
-      if (snap.length > 0) {
-        // moveToRecycleBin 按内容去重，快照与本地重复的不会重复入库
-        RecycleBinStore.moveToRecycleBin(snap, 'ime');
+      const items: RecycleItem[] = RecycleBinStore.load();
+      const chunks: ChunkPayload[] = SyncChunk.pack(SNAP_RECYCLE, Date.now(), items);
+      for (let i = 0; i < chunks.length; i++) {
+        EventBus.publish(OP_RECYCLE_SNAPSHOT, JSON.stringify(chunks[i]), Date.now(), SRC_IME);
       }
-      ClipboardStore.clear();
-      Logger.d('appSync: clear ← App');
+      Logger.d(`recyclePull ← App: 已回全量快照 ${items.length} 条 / ${chunks.length} 片`);
       return;
     }
-    if (e.op === 'remove') {
-      const arr: ClipItem[] = ClipboardStore.getItems();
-      let hit: number = -1;
-      for (let i = 0; i < arr.length; i++) {
-        if (arr[i].text === e.text && (e.ts === 0 || arr[i].timestamp === e.ts)) {
-          hit = i;
-          break;
-        }
+    if (e.op === OP_RECYCLE_REMOVE) {
+      // App 回收站里永久删除/恢复/清空：按**操作记录** (text, at) 精确命中，只删那一次删进来的条目
+      const ops: RecycleOp[] = RecycleBinStore.parseOps(e.text);
+      RecycleBinStore.removeByOps(ops);
+      Logger.d(`recycleRemove ← App: ${ops.length} 条操作记录`);
+      KeyboardController.ack(e.id);
+      return;
+    }
+    if (e.op === OP_SETTINGS_PULL) {
+      // App 打开/回前台：键盘那份设置是权威源 ⇒ 直接回快照，App 自己对齐
+      EventBus.publish(OP_SETTINGS_SNAPSHOT, SettingsSync.toJson(), Date.now(), SRC_IME);
+      Logger.d('settingsPull ← App: 已回设置快照');
+      return;
+    }
+    if (e.op === OP_SETTINGS_SET) {
+      // App 里改了一条设置 ⇒ 写进键盘这份（键盘是权威源，下次 App 拉快照自然对齐）
+      keyboardController.applySetting(e.text, e.ts);
+      KeyboardController.ack(e.id);
+      return;
+    }
+    if (e.op === OP_HIST_REMOVE_MANY) {
+      // App 删历史 / 清空全部：payload **必须**带「具体哪些条目」+ 这次删除动作的身份（PIT-053）。
+      // 事件可能在键盘离线时被补发 ⇒ 只能逐条精确删除，绝不能整体 clear，否则会误伤之后新采集的内容。
+      const payload: HistRemoval | undefined = ClipboardStore.parseRemoval(e.text);
+      if (payload === undefined) {
+        Logger.w('removeMany ← App: 载荷解析失败，忽略');
+        KeyboardController.ack(e.id);
+        return;
       }
-      if (hit < 0) {
-        for (let i = 0; i < arr.length; i++) {
-          if (arr[i].text === e.text) {
-            hit = i;
-            break;
-          }
-        }
-      }
-      if (hit >= 0) {
-        // 键盘这份删之前也留底进回收站（App 侧删的，App 自己会入库；这里保键盘沙箱也有一份）
-        RecycleBinStore.moveToRecycleBin([arr[hit]], 'ime');
-        ClipboardStore.removeAt(hit);
-        Logger.d(`appSync: remove ← App (index=${hit})`);
-      } else {
-        Logger.d('appSync: remove ← App, 本地已无此条');
-      }
+      KeyboardController.applyHistoryRemoval(payload);
+      KeyboardController.ack(e.id);
       return;
     }
     if (e.op === 'add') {
       if (ClipboardStore.addText(e.text)) {
         Logger.d('appSync: add ← App');
       }
+      KeyboardController.ack(e.id);
       return;
     }
     if (e.op === 'snapshot') {
@@ -379,10 +453,61 @@ export class KeyboardController {
       const items: ClipItem[] = ClipboardStore.parseSnapshot(e.text);
       const added: number = ClipboardStore.mergeItems(items);
       Logger.d(`appSync: snapshot ← App, +${added}/${items.length}`);
+      KeyboardController.ack(e.id);
     }
   }
 
-  /** 把键盘这份历史全量广播给 App（旧→新，带时间戳；App 侧合并去重、只加不删） */
+  /**
+   * 按「删除历史」载荷精确删除键盘这份历史（App 发来的 removeMany）：
+   * 只删清单里命中（text 精确，ts>0 时连时间戳一起匹配）的那几条，删之前把命中的
+   * 条目留底进键盘回收站，并**原样使用 App 的 batchId / opAt** ⇒ 两边回收站条目身份一致。
+   * **绝不做整体 clear** —— 事件可能被延迟补发（PIT-053）。
+   */
+  private static applyHistoryRemoval(payload: HistRemoval): void {
+    const items: ClipItem[] = payload.items;
+    if (items.length === 0) {
+      Logger.d('applyHistoryRemoval: 空清单，忽略');
+      return;
+    }
+    const doomed: ClipItem[] = [];
+    // 补全时间戳：App 只给 text 时（ts=0），用本地命中的那条的时间戳，保证 removeExact 能精确对上
+    const normalized: ClipItem[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const it: ClipItem = items[i];
+      if (it.text === undefined || it.text === null || it.text === '') {
+        continue;
+      }
+      const idx: number = ClipboardStore.indexOfExact(it.text, it.timestamp > 0 ? it.timestamp : 0);
+      if (idx >= 0) {
+        const hit: ClipItem = ClipboardStore.getItems()[idx];
+        doomed.push(hit);
+        normalized.push({ text: hit.text, timestamp: hit.timestamp });
+      } else if (it.timestamp > 0) {
+        normalized.push({ text: it.text, timestamp: it.timestamp });
+      }
+    }
+    if (doomed.length > 0) {
+      // moveToRecycleBin 按内容去重，不会重复入库；批次/动作时间用 App 那份，保证跨进程身份一致
+      RecycleBinStore.moveToRecycleBin(doomed, 'ime', payload.opAt, payload.batchId);
+    }
+    const n: number = ClipboardStore.removeExact(normalized);
+    Logger.d(`appSync: 精确删除 ${n}/${items.length} 条（命中历史 ${doomed.length} 条, ` +
+      `batch=${payload.batchId}, opAt=${payload.opAt}）`);
+  }
+
+  /**
+   * 操作回执（PIT-058）：一条 App 操作**应用完**就回一条 ack（带回 App 分配的 id），
+   * App 收到即把该操作出队。ack 丢失无害 —— 操作留在 App 队列，下次 `hello` 重放（幂等）。
+   */
+  private static ack(id: number): void {
+    if (id <= 0) {
+      return;
+    }
+    EventBus.publish(OP_ACK, '', Date.now(), SRC_IME, id);
+    Logger.d(`ack → App: #${id}`);
+  }
+
+  /** 把键盘这份历史全量广播给 App（旧→新，带时间戳；App 侧整份覆盖）。分片发送，见 SyncChunk */
   static publishSnapshot(): void {
     try {
       const items: ClipItem[] = ClipboardStore.getItems();
@@ -390,8 +515,11 @@ export class KeyboardController {
       for (let i = items.length - 1; i >= 0; i--) {
         payload.push({ text: items[i].text, timestamp: items[i].timestamp });
       }
-      EventBus.publish('snapshot', JSON.stringify(payload), Date.now(), SRC_IME);
-      Logger.d(`publishSnapshot → App: ${payload.length} 条`);
+      const chunks: ChunkPayload[] = SyncChunk.pack(SNAP_HIST, Date.now(), payload);
+      for (let i = 0; i < chunks.length; i++) {
+        EventBus.publish('snapshot', JSON.stringify(chunks[i]), Date.now(), SRC_IME);
+      }
+      Logger.d(`publishSnapshot → App: ${payload.length} 条 / ${chunks.length} 片`);
     } catch (err) {
       Logger.w('publishSnapshot failed');
     }

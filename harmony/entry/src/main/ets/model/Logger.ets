@@ -70,6 +70,10 @@ export class Logger {
 
   /** 供设置页切换；true 时若还没有日志文件会补建 */
   static setEnabled(context: common.Context, enabled: boolean): void {
+    // 关闭前先落最后一行标记（write 里也看 enabled，先关就再也写不进去了）
+    if (!enabled) {
+      Logger.write('INFO', '=== Log disabled ===');
+    }
     Logger.enabled = enabled;
     try {
       const store = preferences.getPreferencesSync(context, { name: PREF_STORE });
@@ -84,8 +88,6 @@ export class Logger {
         Logger.write('INFO', `Log re-enabled, file setup: ${setup}`);
       }
       Logger.write('INFO', '=== Log enabled ===');
-    } else {
-      Logger.write('INFO', '=== Log disabled ===');
     }
   }
 

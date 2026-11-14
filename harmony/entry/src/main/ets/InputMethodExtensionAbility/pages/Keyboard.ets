@@ -7,6 +7,7 @@ import { KeyboardController, keyboardController } from '../model/KeyboardControl
 import { Logger } from '../../model/Logger';
 import { ImeItem, ImeSettings } from '../../model/ImeSettings';
 import { RecycleBinStore, RecycleItem, RETENTION_FOREVER, STATE_RECYCLE } from '../../model/RecycleBin';
+import { SettingsSync } from '../../model/SettingsSync';
 import { Palette, paletteOf, STATE_THEME, THEME_ANDROID, THEME_HARMONY, ThemeStore } from '../../model/Theme';
 
 const APP_BUNDLE: string = 'com.example.clipboardmerger';
@@ -16,6 +17,19 @@ const SEP: string = '\n';
 interface ImeRow {
   label: string;
   bundle: string;
+}
+
+/** 顶栏图标说明（⚙ 设置里的「按键说明」用；name 写全量名称，按钮上的简写放 hint） */
+interface ImeKeyHint {
+  icon: Resource;
+  name: string;
+  hint: string;
+}
+
+/** 简写按钮说明：name = 全量名称，hint = 按钮上显示什么 + 作用 */
+interface NameHint {
+  name: string;
+  hint: string;
 }
 
 /**
@@ -75,6 +89,33 @@ struct Keyboard {
 
   private p(): Palette {
     return paletteOf(this.themeId);
+  }
+
+  /** 键盘顶栏图标 → 操作（⚙ 设置里的「按键说明」；这里用全量名称，简写放 hint） */
+  private keyHints(): ImeKeyHint[] {
+    return [
+      { icon: $r('sys.symbol.text_clipboard'), name: '粘贴', hint: '贴勾选的几条；没勾选贴最新一条' },
+      { icon: $r('sys.symbol.list_bullet_square'), name: '全部粘贴', hint: '全部记录按顺序合并贴出' },
+      { icon: $r('sys.symbol.keyboard_badge_globe'), name: '切换输入法', hint: '按钮名「切换」：切下一个；长按弹系统选择器' },
+      { icon: $r('sys.symbol.delete_left'), name: '删除选中文字', hint: '按钮名「删除」：删编辑框选中的字；长按删勾选的历史' },
+      { icon: $r('sys.symbol.eraser_line'), name: '清空剪贴板', hint: '按钮名「清空」：清空历史，内容进回收站' },
+      { icon: $r('sys.symbol.gearshape'), name: '键盘设置', hint: '按钮名「设置」：切换目标 / 高度 / 皮肤 / 日志' },
+      { icon: $r('sys.symbol.chevron_down'), name: '收起键盘', hint: '按钮名「收起」：收起键盘面板' },
+      { icon: $r('sys.symbol.trash'), name: '键盘回收站', hint: '按钮名「回收站」：键盘侧回收站，可恢复 / 清空' }
+    ];
+  }
+
+  /** 键盘里被简写的文字按钮（全量名称 + 按钮上显示什么） */
+  private shortHints(): NameHint[] {
+    return [
+      { name: '取消全选', hint: '按钮名「取消」' },
+      { name: '恢复选中', hint: '按钮名「恢复」：恢复勾选的记录（恢复到最前）' },
+      { name: '恢复全部', hint: '按钮名「全恢复」：回收站全部恢复（恢复到最前）' },
+      { name: '恢复最近', hint: '按钮名「最近」：只恢复最近一次删除的那一批' },
+      { name: '恢复批次', hint: '按钮名「批次」：按删除批次挑一批恢复' },
+      { name: '清空回收站', hint: '按钮名「清空」：再点一次「确认清空」才真删' },
+      { name: '清理日志', hint: '按钮名「清日志」：删掉键盘进程的日志文件' }
+    ];
   }
 
   /** 键盘页面每次创建/显示时都从 preferences 重读皮肤（面板进程独立，切皮肤后立即生效） */
@@ -248,7 +289,7 @@ struct Keyboard {
 
   /**
    * 恢复若干条回收站记录到剪贴板历史。
-   * restoreItems 不触发变化回调 ⇒ 用快照通道同步给 App（App 侧合并去重、只加不删）。
+   * 键盘历史/回收站都是**权威源** ⇒ 恢复后不主动推给 App（App 打开剪切板时会拉全量对齐）。
    */
   private restoreRecycle(items: RecycleItem[]): number {
     if (items.length === 0) {
@@ -262,9 +303,6 @@ struct Keyboard {
     }
     const n: number = ClipboardStore.restoreItems(clips);
     RecycleBinStore.removeIds(ids);
-    if (n > 0) {
-      KeyboardController.publishSnapshot();
-    }
     return n;
   }
 
@@ -384,8 +422,14 @@ struct Keyboard {
     return `🧹 回收站 ${this.recycleItems.length} 条　已选 ${this.recycleSelIds.length} 条　保留：${this.retentionText()}`;
   }
 
+  /** 记一笔「键盘侧刚改过设置」（挡住 App 侧过期的补发，见 PIT-053） */
+  private touchSettings(): void {
+    SettingsSync.markLocalChange(Date.now());
+  }
+
   /** 改保留天数（写键盘自己的设置库；App 那份在 App 设置里各存一份） */
   private setRetentionDays(days: number): void {
+    this.touchSettings();
     RecycleBinStore.setRetentionDays(days);
     this.retentionDays = days;
     this.recycleSelIds = [];
@@ -443,6 +487,7 @@ struct Keyboard {
   /** 选「切换目标」（空串=不限，切换按钮就轮转下一个）；写进键盘进程自己的设置 */
   private pickTarget(bundle: string): void {
     this.targetBundle = bundle;
+    this.touchSettings();
     if (bundle === '') {
       ImeSettings.clearTarget();
       this.toast('切换目标：不限（切下一个）');
@@ -471,6 +516,7 @@ struct Keyboard {
     }
     r = Math.round(r * 100) / 100;
     this.rateText = r.toFixed(2);
+    this.touchSettings();
     keyboardController.applyHeightRate(r);
     this.computePanelHeight();
   }
@@ -491,8 +537,7 @@ struct Keyboard {
       }
       this.newCount = n;
       Logger.d(`Keyboard.refreshNew: lastPaste=${last} new=${n} total=${this.items.length}`);
-      // 全量推一次（旧→新，App 侧合并去重）；「新增即广播」由 ClipboardStore 的变化回调负责
-      KeyboardController.publishSnapshot();
+      // 不再主动推给 App：键盘是权威源，App 打开剪切板时自己拉全量（'pull' → 'snapshot'）
     } catch (err) {
       Logger.w('refreshNew failed');
     }
@@ -627,19 +672,45 @@ struct Keyboard {
       }))
   }
 
+  /**
+   * 图标键：顶栏专用（等宽方形圆角键 + 居中系统 symbol 图标）。
+   * 面板窄，8 个文字键会把列表挤没 ⇒ 换成图标；语义靠 accessibilityText（读屏）与状态栏反馈承载。
+   */
+  @Builder
+  imeIcon(icon: Resource, colorIndex: number, label: string, act: () => void, onLongPress?: () => void) {
+    Stack() {
+      SymbolGlyph(icon)
+        .fontSize(19)
+        .fontColor([this.p().imeKeyFg])
+    }
+    .width(34)
+    .height(30)
+    .borderRadius(8)
+    .backgroundColor(this.p().imeKeyColors[colorIndex])
+    .accessibilityText(label)
+    .onClick(act)
+    .gesture(LongPressGesture().onAction(() => {
+      if (onLongPress !== undefined) {
+        onLongPress();
+      }
+    }))
+  }
+
   build() {
     Column() {
+      // 顶栏：全图标键（粘贴 / 全部粘贴 / 切换 / 删除 / 清空 / ⚙ / ▼ / 回收站）
+      // ⚙ 与 🗑 是"面板开关"⇒ 选中态用实心图标（gearshape_fill / trash_fill）自解释当前在哪个视图
       Row() {
-        this.imeKey('粘贴', 0, () => {
+        this.imeIcon($r('sys.symbol.text_clipboard'), 0, '粘贴（有勾选就贴勾选，没有就贴最新一条）', () => {
           this.paste();
         })
-        this.imeKey('全部粘贴', 1, () => {
+        this.imeIcon($r('sys.symbol.list_bullet_square'), 1, '全部粘贴（按顺序合并插入全部记录）', () => {
           this.pasteAll();
         })
-        this.imeKey('切换', 2, () => {
+        this.imeIcon($r('sys.symbol.keyboard_badge_globe'), 2, '切换输入法（长按选择）', () => {
           this.switchIme();
         })
-        this.imeKey('删除', 3, () => {
+        this.imeIcon($r('sys.symbol.delete_left'), 3, '删除编辑框里选中的文字（长按删除勾选的历史）', () => {
           // 对齐 Android btnDelete：删的是**编辑框里**的文字（有选中整段删，否则退格 1 个字符）
           if (!keyboardController.deleteSelected()) {
             this.setStatus('⚠ 当前没有正在编辑的输入框');
@@ -651,7 +722,7 @@ struct Keyboard {
           this.removeSelected();
           this.toast('已删除勾选的历史记录');
         })
-        this.imeKey('清空', 4, () => {
+        this.imeIcon($r('sys.symbol.eraser_line'), 4, '清空剪贴板历史（内容移入回收站）', () => {
           // 先移入键盘进程自己的回收站（App 那份由 'clear' 事件里的快照入 App 回收站），
           // 再清空；跨进程同步由 ClipboardStore 的变化回调统一广播
           if (this.items.length > 0) {
@@ -661,21 +732,24 @@ struct Keyboard {
           this.selectedTexts = [];
           this.setStatus('剪切板已清空（内容已入回收站）');
         })
-        this.imeKey('⚙', 3, () => {
-          this.toggleSettings();
-        })
-        this.imeKey('▼', 4, () => {
+        this.imeIcon(this.showSettings ? $r('sys.symbol.gearshape_fill') : $r('sys.symbol.gearshape'),
+          3, '键盘设置（切换目标 / 高度 / 皮肤 / 日志）', () => {
+            this.toggleSettings();
+          })
+        this.imeIcon($r('sys.symbol.chevron_down'), 4, '收起键盘面板', () => {
           keyboardController.hidePanel();
         })
-        this.imeKey('🗑', 4, () => {
-          this.toggleRecycle();
-        })
+        this.imeIcon(this.showRecycle ? $r('sys.symbol.trash_fill') : $r('sys.symbol.trash'),
+          4, '回收站（键盘沙箱那份）', () => {
+            this.toggleRecycle();
+          })
       }
       .width('100%')
       .padding({ left: 8, right: 8, top: 6, bottom: 6 })
       .backgroundColor(this.p().imeBarBg)
       .backgroundBlurStyle(this.p().blurBar ? BlurStyle.Thin : BlurStyle.NONE)
       .alignItems(VerticalAlign.Center)
+      .justifyContent(FlexAlign.SpaceBetween)
 
       if (this.showSettings) {
         Text('')
@@ -734,10 +808,10 @@ struct Keyboard {
                 this.imeKey('全选', 0, () => {
                   this.selectAllRecycle();
                 })
-                this.imeKey('取消全选', 1, () => {
+                this.imeKey('取消', 1, () => {
                   this.deselectAllRecycle();
                 })
-                this.imeKey('恢复选中', 0, () => {
+                this.imeKey('恢复', 0, () => {
                   this.restoreSelectedRecycle();
                 })
               }
@@ -746,16 +820,16 @@ struct Keyboard {
               .alignItems(VerticalAlign.Center)
 
               Row() {
-                this.imeKey('恢复全部', 0, () => {
+                this.imeKey('全恢复', 0, () => {
                   this.restoreAllRecycle();
                 })
-                this.imeKey('恢复最近', 0, () => {
+                this.imeKey('最近', 0, () => {
                   this.restoreRecentRecycle();
                 })
-                this.imeKey('恢复批次', 0, () => {
+                this.imeKey('批次', 0, () => {
                   this.openBatchPick();
                 })
-                this.imeKey(this.confirmClear ? '确认清空' : '清空回收站', 4, () => {
+                this.imeKey(this.confirmClear ? '确认清空' : '清空', 4, () => {
                   this.clearRecycleTap();
                 })
               }
@@ -928,6 +1002,7 @@ struct Keyboard {
           .width('100%')
           .padding({ top: 6, bottom: 6 })
           .onClick(() => {
+            this.touchSettings();
             ThemeStore.set(THEME_HARMONY);
             this.toast('已切换到鸿蒙风皮肤');
           })
@@ -938,6 +1013,7 @@ struct Keyboard {
           .width('100%')
           .padding({ top: 6, bottom: 6 })
           .onClick(() => {
+            this.touchSettings();
             ThemeStore.set(THEME_ANDROID);
             this.toast('已切换到 Android 原版皮肤');
           })
@@ -974,16 +1050,17 @@ struct Keyboard {
               .alignItems(HorizontalAlign.Start)
               Toggle({ type: ToggleType.Switch, isOn: this.logOn })
                 .onChange((isOn: boolean) => {
+                  // 日志开关不参与跨进程同步（两端各管各的）⇒ 不用记「本地改过设置」
                   this.logOn = isOn;
                   keyboardController.setLogEnabled(isOn);
-                  this.toast(isOn ? '键盘日志已开启' : '键盘日志已关闭');
+                  this.toast(isOn ? '键盘日志已开启（仅键盘）' : '键盘日志已关闭（仅键盘）');
                 })
             }
             .width('100%')
             .padding({ top: 4, bottom: 6 })
 
             Row() {
-              this.imeKey('清理日志', 1, () => {
+              this.imeKey('清日志', 1, () => {
                 this.clearImeLogs();
               })
               Text(`共 ${this.logFiles.length} 个文件`)
@@ -1008,7 +1085,43 @@ struct Keyboard {
               .width('100%')
               .padding({ top: 4 })
 
-            Text('提示：键盘进程与 App 是独立沙箱 —— 剪贴板历史、皮肤、日志、回收站各存一份。所以「切换目标 / 键盘高度 / 键盘皮肤 / 键盘日志」都只在本页设置才生效；回收站也一样：App 的回收站在 App 沙箱、键盘回收站在键盘沙箱（顶栏 🗑）。')
+            Text('按键说明 · 顶栏（从左到右）').fontSize(11).fontColor(this.p().imeStatusFg).width('100%').margin({ top: 4 })
+            ForEach(this.keyHints(), (h: ImeKeyHint) => {
+              Row() {
+                SymbolGlyph(h.icon)
+                  .fontSize(16)
+                  .fontColor([this.p().imeItemFg])
+                  .width(22)
+                Column() {
+                  Text(h.name).fontSize(12).fontColor(this.p().imeItemFg)
+                  Text(h.hint)
+                    .fontSize(10)
+                    .fontColor(this.p().imeStatusFg)
+                    .margin({ top: 1 })
+                    .maxLines(2)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                }
+                .layoutWeight(1)
+                .alignItems(HorizontalAlign.Start)
+              }
+              .width('100%')
+              .padding({ top: 3, bottom: 3 })
+            }, (h: ImeKeyHint) => h.name)
+
+            Text('按键说明 · 简写按钮').fontSize(11).fontColor(this.p().imeStatusFg).width('100%').margin({ top: 6 })
+            ForEach(this.shortHints(), (h: NameHint) => {
+              Column() {
+                Text(h.name).fontSize(12).fontColor(this.p().imeItemFg)
+                Text(h.hint).fontSize(10).fontColor(this.p().imeStatusFg).margin({ top: 1 })
+              }
+              .width('100%')
+              .alignItems(HorizontalAlign.Start)
+              .padding({ top: 3, bottom: 3 })
+            }, (h: NameHint) => h.name)
+
+            Text('提示：键盘进程与 App 是独立沙箱 —— 剪贴板历史、回收站、日志各存一份。' +
+              '「键盘皮肤 / 切换目标 / 键盘高度 / 回收站保留天数」都以键盘这份为准，App 打开时会自动对齐到这里；' +
+              '日志开关则是两端各管各的（本页只管键盘进程那份）。回收站：App 里看到的是键盘回收站的镜像（顶栏 🗑 是键盘这份）。')
               .fontSize(10)
               .fontColor(this.p().imeStatusFg)
               .width('100%')
