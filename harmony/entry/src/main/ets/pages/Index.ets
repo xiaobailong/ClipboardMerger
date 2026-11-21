@@ -237,15 +237,21 @@ struct Index {
 
   /** 左滑删除：先移入回收站再删（对齐 Android ViewModel.deleteItem），并同步给键盘进程 */
   private deleteItem(item: ClipItem): void {
-    const idx: number = this.items.indexOf(item);
+    // 必须按值 (text, timestamp) 定位，不能按引用 indexOf：
+    // 键盘快照每次到达都会 replaceAll 生成**全新对象**（日志 ~8s 一次），
+    // 左滑闭包捕获的旧 item 引用在点击时早已不在 this.items 里 ⇒ indexOf=-1 静默失败（2026-11-21 事故）
+    const idx: number = ClipboardStore.indexOfExact(item.text, item.timestamp);
     if (idx < 0) {
+      Logger.w('deleteItem: 条目已被键盘快照覆盖/删除，本次左滑删除忽略');
+      this.notice = '该条已被同步刷新，请重新左滑删除';
       return;
     }
-    const meta: RecycleOpMeta = RecycleBinStore.moveToRecycleBin([item], 'app');
+    const live: ClipItem = ClipboardStore.getItems()[idx];
+    const meta: RecycleOpMeta = RecycleBinStore.moveToRecycleBin([live], 'app');
     ClipboardStore.removeAt(idx);
     // 键盘侧要用同一份 batchId / opAt 建回收站条目，跨进程身份才对得上
     this.publishHist(OP_HIST_REMOVE_MANY,
-      ClipboardStore.removalJson([item], meta.batchId, meta.opAt), Date.now());
+      ClipboardStore.removalJson([live], meta.batchId, meta.opAt), Date.now());
     this.notice = '已移入回收站';
     Logger.d(`deleteItem: index=${idx}, batch=${meta.batchId}, total=${RecycleBinStore.getItems().length}`);
   }
